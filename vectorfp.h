@@ -1,7 +1,7 @@
 #ifndef VECTOR_FP_H
 #define VECTOR_FP_H
 
-#define RP_BITS 16
+#define RP_BITS 12
 
 #define FLOAT_TO_FIXED(f,b) ((int)((f) * (1 << b)))
 #define INT_TO_FIXED(i,b) ((i) << b)
@@ -25,8 +25,8 @@
 #define VEC_INT_TO_FP(x,y,z) Vec3fp(INT_TO_FP(x), INT_TO_FP(y), INT_TO_FP(z))
 #define VEC_FLT_TO_FP(x,y,z) Vec3fp(FLT_TO_FP(x), FLT_TO_FP(y), FLT_TO_FP(z))
 
-#define FP_MUL_T(x,y) FP_MUL_64(x,y)
-#define FP_DIV_T(x,y) FP_DIV_64(x,y)
+#define FP_MUL_T(x,y) FP_MUL(x,y)
+#define FP_DIV_T(x,y) FP_DIV(x,y)
 
 struct Vec3fp
 {

@@ -168,6 +168,7 @@ static inline int intersect(Object* obj, Vec3fp* dir, int dirDot)
 		case OBJ_SPHERE:
 		{
 			const int a = dirDot;
+			if (a == 0) return -1;
 
 			const int b = 2 * (FP_MUL_T(dir->x, -obj->pos.x) + FP_MUL_T(dir->y, -obj->pos.y) + FP_MUL_T(dir->z, -obj->pos.z));
 			const int c = obj->d;
@@ -259,11 +260,16 @@ static void setupObjects()
 
 static void updateObjects(int ticks)
 {
-	float posX = (float)sin(ticks / 650.0f) * 1;
-	float posY = (float)sin(ticks / 480.0f) * 1;
-	float posZ = 4.0f + (float)sin(ticks / 880.0f) * 2;
+	//float posX = (float)sin(ticks / 650.0f) * 1;
+	//float posY = (float)sin(ticks / 480.0f) * 1;
+	//float posZ = 4.0f + (float)sin(ticks / 880.0f) * 2;
 
-	setObjectSphere(&sphere, VEC_FLT_TO_FP(posX, posY, posZ), FLT_TO_FP(1), 2);
+	float posX = (float)sin(ticks / 650.0f) * 0.25f;
+	float posY = (float)sin(ticks / 480.0f) * 0.25f;
+	float posZ = 1.0f + (float)sin(ticks / 880.0f) * 0.5f;
+	float radius = 0.25f;
+
+	setObjectSphere(&sphere, VEC_FLT_TO_FP(posX, posY, posZ), FLT_TO_FP(radius), 2);
 
 	calcABCD(&plane);
 	calcABCD(&sphere);

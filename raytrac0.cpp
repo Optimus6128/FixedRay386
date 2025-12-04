@@ -145,6 +145,8 @@ static inline float intersect(Object* obj, Vec3* dir, float dirDot)
 		case OBJ_SPHERE:
 		{
 			const float a = dirDot;
+			if (a == 0.0f) return -1;
+
 			const float b = 2 * (dir->x * (-obj->pos.x) + dir->y * (-obj->pos.y) + dir->z * (-obj->pos.z));
 			const float c = obj->d;
 
@@ -234,10 +236,12 @@ static void setupObjects()
 
 static void updateObjects(int ticks)
 {
-	float posX = (float)sin(ticks / 650.0f) * 1;
-	float posY = (float)sin(ticks / 480.0f) * 1;
-	float posZ = 4.0f + (float)sin(ticks / 880.0f) * 2;
-	setObjectSphere(&sphere, Vec3(posX, posY, posZ), 1, 2);
+	float posX = (float)sin(ticks / 650.0f) * 0.25f;
+	float posY = (float)sin(ticks / 480.0f) * 0.25f;
+	float posZ = 1.0f + (float)sin(ticks / 880.0f) * 0.5f;
+	float radius = 0.25f;
+
+	setObjectSphere(&sphere, Vec3(posX, posY, posZ), radius, 2);
 
 	calcABCD(&plane);
 	calcABCD(&sphere);
