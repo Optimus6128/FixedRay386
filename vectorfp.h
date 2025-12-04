@@ -2,6 +2,7 @@
 #define VECTOR_FP_H
 
 #define RP_BITS 12
+#define COL_BITS 8
 
 #define FLOAT_TO_FIXED(f,b) ((int)((f) * (1 << b)))
 #define INT_TO_FIXED(i,b) ((i) << b)
@@ -11,7 +12,7 @@
 #define FIXED_MUL_64(x,y,b) ((int)(((long long int)(x) * (long long int)(y)) >> b))
 #define FIXED_DIV(x,y,b) (((x) << b) / (y))
 #define FIXED_DIV_64(x,y,b) (((long long int)(x) << b) / (y))
-#define FIXED_SQRT(x,b) (sqrt((x) << b))
+#define FIXED_SQRT(x,b) (isqrt(x) << (b / 2))
 
 #define FLT_TO_FP(f)    FLOAT_TO_FIXED(f,RP_BITS)
 #define INT_TO_FP(i)    INT_TO_FIXED(i,RP_BITS)
@@ -21,6 +22,7 @@
 #define FP_MUL_64(x,y)  FIXED_MUL_64(x,y,RP_BITS)
 #define FP_DIV(x,y)     FIXED_DIV(x,y,RP_BITS)
 #define FP_DIV_64(x,y)  FIXED_DIV_64(x,y,RP_BITS)
+#define FP_SQRT(x)		FIXED_SQRT(x,RP_BITS)
 
 #define VEC_INT_TO_FP(x,y,z) Vec3fp(INT_TO_FP(x), INT_TO_FP(y), INT_TO_FP(z))
 #define VEC_FLT_TO_FP(x,y,z) Vec3fp(FLT_TO_FP(x), FLT_TO_FP(y), FLT_TO_FP(z))

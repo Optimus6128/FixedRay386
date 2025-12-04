@@ -11,8 +11,6 @@
 
 #define FAR_FI (1 << 30)
 
-#define FP_SQRT(x) (isqrt(x) << (RP_BITS / 2))
-
 typedef struct Object
 {
 	int type;
@@ -30,10 +28,12 @@ typedef struct Hit
 
 static Object plane;
 static Object sphere;
-
+static Vec3fp lightDir;
 
 static Vec3fp* viewDirPerPixel;
 static int* viewDirDotPerPixel;
+
+
 
 static void setupViewDirPerPixelLUTs(Screen* buffer)
 {
@@ -289,6 +289,7 @@ static inline int computeColor(Vec3fp* dir, Hit* hit)
 	Object* obj = hit->obj;
 	Vec3fp normal;
 	int ci = 0;
+	int u, v;
 
 	if (obj) {
 		switch (obj->type) {
@@ -297,20 +298,22 @@ static inline int computeColor(Vec3fp* dir, Hit* hit)
 			normal.y = obj->b;
 			normal.z = obj->c;
 
-			ci = (int)(FP_TO_FLT(Vdot(dir, &normal)) * 256);
-			CLAMP(ci, 0, 255);
-			ci = ((((int)(FP_TO_FLT(hit->pos.x) * 16) & 15) ^ ((int)(FP_TO_FLT(hit->pos.z) * 16) & 15)) * ci) >> 6;
+			ci = Vdot(dir, &normal);
+			CLAMP(ci, 0, ((1<<RP_BITS)-1));
+			u = (hit->pos.x >> 4) & 255;
+			v = (hit->pos.z >> 4) & 255;
+			ci = FP_MUL((u ^ v), ci);
 			break;
 
 		case OBJ_SPHERE:
-			normal.x = -(hit->pos.x - obj->a);
-			normal.y = -(hit->pos.y - obj->b);
-			normal.z = -(hit->pos.z - obj->c);
+			normal.x = -(hit->pos.x - obj->a) * 2;
+			normal.y = -(hit->pos.y - obj->b) * 2;
+			normal.z = -(hit->pos.z - obj->c) * 2;
 
-			Vnormalize(&normal);
+			//Vnormalize(&normal);
 
-			ci = (int)(FP_TO_FLT(Vdot(dir, &normal)) * 256);
-			CLAMP(ci, 0, 255);
+			ci = Vdot(&lightDir, &normal) >> (RP_BITS - COL_BITS);
+			CLAMP(ci, 0, (1<<COL_BITS)-1);
 			break;
 		}
 	}
@@ -341,12 +344,15 @@ static void renderObjects(Screen* buffer)
 	Vec3fp* dir = viewDirPerPixel;
 	int* dirDot = viewDirDotPerPixel;
 
+	lightDir = VEC_FLT_TO_FP(-0.25f, -0.5f, 0.875f);
+	Vnormalize(&lightDir);
+
 	do {
 		hit.obj = &sphere;
 		traceRay(dir, dirDot, &hit);
 
-		*dst++ = computeColorObjIndex(&hit);
-		//*dst++ = computeColor(dir, &hit);
+		//*dst++ = computeColorObjIndex(&hit);
+		*dst++ = computeColor(dir, &hit);
 
 		dir++;
 		dirDot++;
