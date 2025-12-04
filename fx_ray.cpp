@@ -18,6 +18,6 @@ void fxRayInit(Screen *screen)
 
 void fxRayRun(Screen *screen, uint32 ticks)
 {
-	raytraceRun0(screen, ticks);
-	//raytraceRun1(screen, ticks);
+	//raytraceRun0(screen, ticks);
+	raytraceRun1(screen, ticks);
 }

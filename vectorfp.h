@@ -25,6 +25,9 @@
 #define VEC_INT_TO_FP(x,y,z) Vec3fp(INT_TO_FP(x), INT_TO_FP(y), INT_TO_FP(z))
 #define VEC_FLT_TO_FP(x,y,z) Vec3fp(FLT_TO_FP(x), FLT_TO_FP(y), FLT_TO_FP(z))
 
+#define FP_MUL_T(x,y) FP_MUL_64(x,y)
+#define FP_DIV_T(x,y) FP_DIV_64(x,y)
+
 struct Vec3fp
 {
     int x, y, z;

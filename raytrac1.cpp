@@ -55,7 +55,7 @@ static void setupViewDirPerPixelLUTs(Screen* buffer)
 			//Don't normalize yet, if we can get the vis without it..
 			//Vnormalize(dir);
 
-			*dirDot++ = 2 * (FP_MUL_64(dir->x, dir->x) + FP_MUL_64(dir->y, dir->y) + FP_MUL_64(dir->z, dir->z));
+			*dirDot++ = 2 * (FP_MUL_T(dir->x, dir->x) + FP_MUL_T(dir->y, dir->y) + FP_MUL_T(dir->z, dir->z));
 			dir++;
 			Xdir += Xinc;
 		}
@@ -72,7 +72,7 @@ static void renderViewDir(Screen* buffer)
 	Vec3fp* src = viewDirPerPixel;
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width; ++x) {
-			uint32 c = FP_TO_INT((FP_MUL_64(src->x, src->x) + FP_MUL_64(src->y, src->y)) * 256);
+			uint32 c = FP_TO_INT((FP_MUL_T(src->x, src->x) + FP_MUL_T(src->y, src->y)) * 256);
 			if (c > 255) c = 255;
 			*dst++ = (uint8)(c >> 1);
 			++src;
@@ -99,7 +99,7 @@ static void renderViewDirDot(Screen* buffer)
 
 static int Vdot(Vec3fp* v1, Vec3fp* v2)
 {
-    return FP_MUL_64(v1->x, v2->x) + FP_MUL_64(v1->y, v2->y) + FP_MUL_64(v1->z, v2->z);
+    return FP_MUL_T(v1->x, v2->x) + FP_MUL_T(v1->y, v2->y) + FP_MUL_T(v1->z, v2->z);
 }
 
 static int Vlength(Vec3fp *v)
@@ -111,17 +111,17 @@ static void Vnormalize (Vec3fp* v)
 {
 	int r = Vlength(v);
 	if (r!=0) {
-		v->x = FP_DIV_64(v->x, r);
-		v->y = FP_DIV_64(v->y, r);
-		v->z = FP_DIV_64(v->z, r);
+		v->x = FP_DIV_T(v->x, r);
+		v->y = FP_DIV_T(v->y, r);
+		v->z = FP_DIV_T(v->z, r);
 	}
 }
 
 static void Vcross(Vec3fp* v1, Vec3fp* v2, Vec3fp* v)
 {
-    v->x = FP_MUL_64(v1->y, v2->z) - FP_MUL_64(v2->y, v1->z);
-    v->y = FP_MUL_64(v1->z, v2->x) - FP_MUL_64(v2->z, v1->x);
-    v->z = FP_MUL_64(v1->x, v2->y) - FP_MUL_64(v2->x, v1->y);
+    v->x = FP_MUL_T(v1->y, v2->z) - FP_MUL_T(v2->y, v1->z);
+    v->y = FP_MUL_T(v1->z, v2->x) - FP_MUL_T(v2->z, v1->x);
+    v->z = FP_MUL_T(v1->x, v2->y) - FP_MUL_T(v2->x, v1->y);
 }
 
 static void calcABCD(Object* obj)
@@ -142,8 +142,7 @@ static void calcABCD(Object* obj)
 			obj->a = obj->pos.x;
 			obj->b = obj->pos.y;
 			obj->c = obj->pos.z;
-			//obj->d = 2 * (Vdot(&obj->pos, &obj->pos) - FP_MUL_64(obj->radius, obj->radius));
-			obj->d = 2 * (FP_MUL_64(obj->pos.x, obj->pos.x) + FP_MUL_64(obj->pos.y, obj->pos.y) + FP_MUL_64(obj->pos.z, obj->pos.z) - FP_MUL_64(obj->radius, obj->radius));
+			obj->d = 2 * (FP_MUL_T(obj->pos.x, obj->pos.x) + FP_MUL_T(obj->pos.y, obj->pos.y) + FP_MUL_T(obj->pos.z, obj->pos.z) - FP_MUL_T(obj->radius, obj->radius));
 			break;
 
 		default:
@@ -157,10 +156,10 @@ static inline int intersect(Object* obj, Vec3fp* dir, int dirDot)
 
 		case OBJ_PLANE:
 		{
-			const int denom = FP_MUL_64(obj->a, dir->x) + FP_MUL_64(obj->b, dir->y) + FP_MUL_64(obj->c, dir->z);
+			const int denom = FP_MUL_T(obj->a, dir->x) + FP_MUL_T(obj->b, dir->y) + FP_MUL_T(obj->c, dir->z);
 
 			if (denom != 0) {
-				return -FP_DIV_64(obj->d, denom);
+				return -FP_DIV_T(obj->d, denom);
 			}
 			return -1;
 		}
@@ -170,16 +169,16 @@ static inline int intersect(Object* obj, Vec3fp* dir, int dirDot)
 		{
 			const int a = dirDot;
 
-			const int b = 2 * (FP_MUL_64(dir->x, -obj->pos.x) + FP_MUL_64(dir->y, -obj->pos.y) + FP_MUL_64(dir->z, -obj->pos.z));
+			const int b = 2 * (FP_MUL_T(dir->x, -obj->pos.x) + FP_MUL_T(dir->y, -obj->pos.y) + FP_MUL_T(dir->z, -obj->pos.z));
 			const int c = obj->d;
 
-			int d = FP_MUL_64(b, b) - FP_MUL_64(a, c);
+			int d = FP_MUL_T(b, b) - FP_MUL_T(a, c);
 			if (d >= 0) {
 				d = FLT_TO_FP(sqrt(FP_TO_FLT(d)));
 
 				// No div by zero despite warning (a happens to be well above zero)
-				int t1 = FP_DIV_64(-b + d, a);
-				int t2 = FP_DIV_64(-b - d, a);
+				int t1 = FP_DIV_T(-b + d, a);
+				int t2 = FP_DIV_T(-b - d, a);
 
 				if (t1 <= 0 && t2 <= 0) {
 					return -1;
@@ -217,9 +216,9 @@ static void traceRay(Vec3fp *dir, int *dirDot, Hit *hit)
 	if (t1 > 0 && t1 < tMin) { tMin = t1; hit->obj = &sphere; }
 
 	if (tMin < FAR_FI) {
-		hit->pos.x = FP_MUL_64(tMin, dir->x);
-		hit->pos.y = FP_MUL_64(tMin, dir->y);
-		hit->pos.z = FP_MUL_64(tMin, dir->z);
+		hit->pos.x = FP_MUL_T(tMin, dir->x);
+		hit->pos.y = FP_MUL_T(tMin, dir->y);
+		hit->pos.z = FP_MUL_T(tMin, dir->z);
 	}
 }
 
