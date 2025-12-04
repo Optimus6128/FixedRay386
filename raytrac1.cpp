@@ -6,9 +6,12 @@
 #include "types.h"
 #include "vectorFp.h"
 #include "raytrace.h"
+#include "mathutil.h"
 
 
 #define FAR_FI (1 << 30)
+
+#define FP_SQRT(x) (isqrt(x) << (RP_BITS / 2))
 
 typedef struct Object
 {
@@ -104,7 +107,7 @@ static int Vdot(Vec3fp* v1, Vec3fp* v2)
 
 static int Vlength(Vec3fp *v)
 {
-	return FLT_TO_FP(sqrt(FP_TO_FLT(Vdot(v,v))));
+	return FP_SQRT(Vdot(v, v));
 }
 
 static void Vnormalize (Vec3fp* v)
@@ -175,7 +178,7 @@ static inline int intersect(Object* obj, Vec3fp* dir, int dirDot)
 
 			int d = FP_MUL_T(b, b) - FP_MUL_T(a, c);
 			if (d >= 0) {
-				d = FLT_TO_FP(sqrt(FP_TO_FLT(d)));
+				d = FP_SQRT(d);
 
 				// No div by zero despite warning (a happens to be well above zero)
 				int t1 = FP_DIV_T(-b + d, a);
@@ -260,10 +263,6 @@ static void setupObjects()
 
 static void updateObjects(int ticks)
 {
-	//float posX = (float)sin(ticks / 650.0f) * 1;
-	//float posY = (float)sin(ticks / 480.0f) * 1;
-	//float posZ = 4.0f + (float)sin(ticks / 880.0f) * 2;
-
 	float posX = (float)sin(ticks / 650.0f) * 0.25f;
 	float posY = (float)sin(ticks / 480.0f) * 0.25f;
 	float posZ = 1.0f + (float)sin(ticks / 880.0f) * 0.5f;
@@ -300,7 +299,7 @@ static inline int computeColor(Vec3fp* dir, Hit* hit)
 
 			ci = (int)(FP_TO_FLT(Vdot(dir, &normal)) * 256);
 			CLAMP(ci, 0, 255);
-			ci = ((((int)(FP_TO_FLT(hit->pos.x) * 16) & 15) ^ ((int)(FP_TO_FLT(hit->pos.z) * 16) & 15)) * ci) >> 7;
+			ci = ((((int)(FP_TO_FLT(hit->pos.x) * 16) & 15) ^ ((int)(FP_TO_FLT(hit->pos.z) * 16) & 15)) * ci) >> 6;
 			break;
 
 		case OBJ_SPHERE:

@@ -6,6 +6,7 @@
 #include "types.h"
 #include "raytrace.h"
 #include "vector.h"
+#include "mathutil.h"
 
 
 #define FAR_F 1000000000.0f
