@@ -16,7 +16,7 @@ enum {	VMODE_TEXT,
 		VMODE_320x200_16BPP,
 		VMODES_NUM};
 
-struct vmode
+typedef struct vmode
 {
 	vmode(){};
 	vmode(uint16 m, uint16 w, uint16 h, uint8 b, bool vs, uint8 *v) : 
@@ -29,7 +29,7 @@ struct vmode
 	bool vesa;
 	uint8 *vram;
 	uint8 *buffer;
-};
+}vmode;
 
 void initVideoModeInfo();
 vmode *setVideoMode(uint16 width, uint16 height, uint8 bpp, bool needsBuffer = false);

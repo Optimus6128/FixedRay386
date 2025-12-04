@@ -3,8 +3,8 @@
 
 #include "types.h"
 
-#define SCREEN_WIDTH 640
-#define SCREEN_HEIGHT 480
+#define SCREEN_WIDTH 320
+#define SCREEN_HEIGHT 200
 #define SCREEN_BPP 8
 
 typedef struct Screen

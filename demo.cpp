@@ -80,13 +80,13 @@ int main(int argc, char **argv)
 
 	//setTextMode();	// for debugging
 
-	fxRayInit(screen);
+	fxRayInit(&screen);
 
 	while(!quit)
 	{
 		input();
 
-		fxRayRun(screen, getTime());
+		fxRayRun(&screen, getTime());
 
 		drawFps(&screen);
 
