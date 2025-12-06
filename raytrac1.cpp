@@ -209,7 +209,6 @@ static inline int intersectSphere(Object* obj, Vec3fp* dir, int dirDot)
 static void traceRay(Vec3fp *dir, int dirDot, Hit *hit)
 {
 	int t, tMin = FAR_FI;
-	Object *obj;
 
 	hit->obj = NULL;
 	if (dir->y < 0) {	// cheat (this plane in this scene is under horizon always)
@@ -217,9 +216,9 @@ static void traceRay(Vec3fp *dir, int dirDot, Hit *hit)
 		if (t > 0) { tMin = t; hit->obj = &plane; }
 	}
 
-	obj = &sphere[0]; t = intersectSphere(obj, dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = obj; }
-	obj = &sphere[1]; t = intersectSphere(obj, dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = obj; }
-	obj = &sphere[2]; t = intersectSphere(obj, dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = obj; }
+	t = intersectSphere(&sphere[0], dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[0]; }
+	t = intersectSphere(&sphere[1], dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[1]; }
+	t = intersectSphere(&sphere[2], dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[2]; }
 
 	if (tMin < FAR_FI) {
 		hit->pos.x = FP_MUL_T(tMin, dir->x);
@@ -317,8 +316,6 @@ static inline int computeColor(Vec3fp* dir, Hit* hit, int ticks)
 				normal.x = -FP_MUL_T((hit->pos.x - obj->a), obj->invR);
 				normal.y = -FP_MUL_T((hit->pos.y - obj->b), obj->invR);
 				normal.z = -FP_MUL_T((hit->pos.z - obj->c), obj->invR);
-
-				//Vnormalize(&normal);
 
 				ci = Vdot(&lightDir, &normal) >> (RP_BITS - COL_BITS_OBJ);
 				CLAMP(ci, 0, COLS_OBJ_RANGE);

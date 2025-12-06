@@ -26,12 +26,17 @@ typedef struct Hit
 	Vec3 pos;
 } Hit;
 
+typedef struct PerPixelPrecs
+{
+	Vec3* viewDir;
+	float* dirDot;
+} PerPixelPrecs;
+
 static Object plane;
 static Object sphere[3];
 static Vec3 lightDir;
 
-static Vec3 *viewDirPerPixel;
-static float* viewDirDotPerPixel;
+static PerPixelPrecs perPixelPrecs;
 
 static void setupViewDirPerPixelLUTs(Screen* buffer)
 {
@@ -45,8 +50,8 @@ static void setupViewDirPerPixelLUTs(Screen* buffer)
 										// For a moment I thought when I removed viewer pos at -Z something, that it would be some stupid pinhole distorted view from 0,0,0 stretch over the pixelres and maybe it was a mistake to simplify the old, but let's see
 										// EDIT: we can control the FOV from here. change 1.0f to 0.5f see what happens or to 1.5f
 
-	Vec3* dir = viewDirPerPixel;
-	float* dirDot = viewDirDotPerPixel;
+	Vec3* dir = perPixelPrecs.viewDir;
+	float* dirDot = perPixelPrecs.dirDot;
 
     float Ydir = (screenHeight / 2) * Yinc;
     for (int y = 0; y < screenHeight; y++) {
@@ -73,7 +78,7 @@ static void renderViewDir(Screen* buffer)
 	const int height = buffer->height;
 	uint8* dst = (uint8*)buffer->data;
 
-	Vec3* src = viewDirPerPixel;
+	Vec3* src = perPixelPrecs.viewDir;
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width; ++x) {
 			uint32 c = (uint32)((src->x * src->x + src->y * src->y) * 255.0f);
@@ -90,7 +95,7 @@ static void renderViewDirDot(Screen* buffer)
 	const int height = buffer->height;
 	uint8* dst = (uint8*)buffer->data;
 
-	float* src = viewDirDotPerPixel;
+	float* src = perPixelPrecs.dirDot;
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width; ++x) {
 			uint32 c = (uint32)(*src * 16);
@@ -127,59 +132,48 @@ static void calcABCD(Object* obj)
 	}
 }
 
-// We will assume not viewer pos is 0,0,0
-static inline float intersect(Object* obj, Vec3* dir, float dirDot)
+static inline float intersectPlane(Object* obj, Vec3* dir)
 {
-	switch (obj->type) {
+	const float denom = obj->a * dir->x + obj->b * dir->y + obj->c * dir->z;
+	if (denom != 0) {
+		return -obj->d / denom;
+	}
+	return -1;
+}
 
-		case OBJ_PLANE:
-		{
-			const float denom = obj->a * dir->x + obj->b * dir->y + obj->c * dir->z;
+static inline float intersectSphere(Object* obj, Vec3* dir, float dirDot)
+{
+	if (dirDot == 0.0f) return -1;
 
-			if (denom != 0) {
-				return -obj->d / denom;
-			}
+	const float b = 2 * (dir->x * (-obj->pos.x) + dir->y * (-obj->pos.y) + dir->z * (-obj->pos.z));
+	const float c = obj->d;
+
+	float d = b * b - dirDot * c;
+	if (d >= 0) {
+		d = (float)sqrt(d);
+
+		// No div by zero despite warning (a happens to be well above zero)
+		float t1 = (-b + d) / dirDot;
+		float t2 = (-b - d) / dirDot;
+
+		if (t1 <= 0 && t2 <= 0) {
 			return -1;
 		}
-		break;
 
-		case OBJ_SPHERE:
-		{
-			const float a = dirDot;
-			if (a == 0.0f) return -1;
-
-			const float b = 2 * (dir->x * (-obj->pos.x) + dir->y * (-obj->pos.y) + dir->z * (-obj->pos.z));
-			const float c = obj->d;
-
-			float d = b * b - a * c;
-			if (d >= 0) {
-				d = (float)sqrt(d);
-
-				// No div by zero despite warning (a happens to be well above zero)
-				float t1 = (-b + d) / a;
-				float t2 = (-b - d) / a;
-
-				if (t1 <= 0 && t2 <= 0) {
-					return -1;
-				}
-
-				if (t1 < t2) {
-					if (t1 > 0) {
-						return t1;
-					} else {
-						return t2;
-					}
-				}
-				else {
-					if (t2 > 0) {
-						return t2;
-					} else {
-						return t1;
-					}
-				}
+		if (t1 < t2) {
+			if (t1 > 0) {
+				return t1;
+			} else {
+				return t2;
 			}
 		}
-		break;
+		else {
+			if (t2 > 0) {
+				return t2;
+			} else {
+				return t1;
+			}
+		}
 	}
 	return -1;
 }
@@ -189,14 +183,14 @@ static void traceRay(Vec3 *dir, float dirDot, Hit *hit)
 	float t, tMin = FAR_F;
 
 	hit->obj = NULL;
-	t = intersect(&plane, dir, 0.0f);
-	if (t > 0.0f) { tMin = t; hit->obj = &plane; }
-
-	for (int i = 0; i < 3; ++i) {
-		Object* obj = &sphere[i];
-		t = intersect(obj, dir, dirDot);
-		if (t > 0.0f && t < tMin) { tMin = t; hit->obj = obj; }
+	if (dir->y < 0.0f) {	// cheat (this plane in this scene is under horizon always)
+		t = intersectPlane(&plane, dir);
+		if (t > 0.0f) { tMin = t; hit->obj = &plane; }
 	}
+
+	t = intersectSphere(&sphere[0], dir, dirDot); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[0]; }
+	t = intersectSphere(&sphere[1], dir, dirDot); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[1]; }
+	t = intersectSphere(&sphere[2], dir, dirDot); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[2]; }
 
 	if (tMin < FAR_F) {
 		hit->pos.x = tMin * dir->x;
@@ -244,9 +238,9 @@ static void updateObjects(int ticks)
 {
 	for (int i = 0; i < 3; ++i) {
 		float t = (float)(((i + 1) << 10) + ticks);
-		float posX = (float)sin(t / 650.0f) * 0.45f;
-		float posY = (float)sin(t / 480.0f) * 0.2f;
-		float posZ = 1.5f + (float)sin(t / 880.0f) * 0.325f;
+		float posX = (float)sin(t / 650.0f) * 0.5f;
+		float posY = (float)sin(t / 480.0f) * 0.25f;
+		float posZ = 1.75f + (float)sin(t / 880.0f) * 0.25f;
 
 		sphere[i].pos = Vec3(posX, posY, posZ);
 		calcABCD(&sphere[i]);
@@ -255,8 +249,8 @@ static void updateObjects(int ticks)
 
 void raytraceInit0(Screen* buffer)
 {
-	viewDirPerPixel = new Vec3[buffer->width * buffer->height];
-	viewDirDotPerPixel = new float[buffer->width * buffer->height];
+	perPixelPrecs.viewDir = new Vec3[buffer->width * buffer->height];
+	perPixelPrecs.dirDot = new float[buffer->width * buffer->height];
 
 	setupViewDirPerPixelLUTs(buffer);
 
@@ -317,8 +311,8 @@ static void renderObjects(Screen* buffer, int ticks)
 	uint8* dst = (uint8*)buffer->data;
 
 	Hit hit;
-	Vec3* dir = viewDirPerPixel;
-	float* dirDot = viewDirDotPerPixel;
+	Vec3* dir = perPixelPrecs.viewDir;
+	float* dirDot = perPixelPrecs.dirDot;
 
 	lightDir = Vec3(-0.25f, -0.5f, 0.875f);
 	Vnormalize(&lightDir);
