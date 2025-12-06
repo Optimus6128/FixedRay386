@@ -3,6 +3,11 @@
 
 #include "types.h"
 #include "demo.h"
+#define COL_BITS 8
+#define COL_BITS_OBJ 6
+
+#define COLS_RANGE ((1<<COL_BITS)-1)
+#define COLS_OBJ_RANGE ((1<<COL_BITS_OBJ)-1)
 
 enum { OBJ_NOTHING, OBJ_PLANE, OBJ_SPHERE };
 

@@ -16,6 +16,7 @@ typedef struct Object
 	int type;
 	Vec3fp pos, dir1, dir2;
 	int radius;
+	int invR;
 	int a, b, c, d;
 	int index;
 } Object;
@@ -26,12 +27,18 @@ typedef struct Hit
 	Vec3fp pos;
 } Hit;
 
+typedef struct PerPixelPrecs
+{
+	Vec3fp* viewDir;
+	int* dirDot;
+} PerPixelPrecs;
+
+
 static Object plane;
-static Object sphere;
+static Object sphere[3];
 static Vec3fp lightDir;
 
-static Vec3fp* viewDirPerPixel;
-static int* viewDirDotPerPixel;
+static PerPixelPrecs perPixelPrecs;
 
 
 
@@ -44,8 +51,8 @@ static void setupViewDirPerPixelLUTs(Screen* buffer)
 	const int Xinc = FLT_TO_FP(2.0f / (screenWidth - 1));
 	const int Yinc = FLT_TO_FP((2.0f / (screenHeight - 1)) * aspectRatio);
 
-	Vec3fp* dir = viewDirPerPixel;
-	int* dirDot = viewDirDotPerPixel;
+	Vec3fp* dir = perPixelPrecs.viewDir;
+	int* dirDot = perPixelPrecs.dirDot;
 
 	int Ydir = (screenHeight / 2) * Yinc;
 	for (int y = 0; y < screenHeight; y++) {
@@ -72,7 +79,7 @@ static void renderViewDir(Screen* buffer)
 	const int height = buffer->height;
 	uint8* dst = (uint8*)buffer->data;
 
-	Vec3fp* src = viewDirPerPixel;
+	Vec3fp* src = perPixelPrecs.viewDir;
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width; ++x) {
 			uint32 c = FP_TO_INT((FP_MUL_T(src->x, src->x) + FP_MUL_T(src->y, src->y)) * 256);
@@ -89,7 +96,7 @@ static void renderViewDirDot(Screen* buffer)
 	const int height = buffer->height;
 	uint8* dst = (uint8*)buffer->data;
 
-	int* src = viewDirDotPerPixel;
+	int* src = perPixelPrecs.dirDot;
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width; ++x) {
 			uint32 c = (uint32)(FP_TO_FLT(*src) * 16);
@@ -153,71 +160,66 @@ static void calcABCD(Object* obj)
 	}
 }
 
-static inline int intersect(Object* obj, Vec3fp* dir, int dirDot)
+static inline int intersectPlane(Object* obj, Vec3fp* dir)
 {
-	switch (obj->type) {
-
-		case OBJ_PLANE:
-		{
-			const int denom = FP_MUL_T(obj->a, dir->x) + FP_MUL_T(obj->b, dir->y) + FP_MUL_T(obj->c, dir->z);
-
-			if (denom != 0) {
-				return -FP_DIV_T(obj->d, denom);
-			}
-			return -1;
-		}
-		break;
-
-		case OBJ_SPHERE:
-		{
-			const int a = dirDot;
-			if (a == 0) return -1;
-
-			const int b = 2 * (FP_MUL_T(dir->x, -obj->pos.x) + FP_MUL_T(dir->y, -obj->pos.y) + FP_MUL_T(dir->z, -obj->pos.z));
-			const int c = obj->d;
-
-			int d = FP_MUL_T(b, b) - FP_MUL_T(a, c);
-			if (d >= 0) {
-				d = FP_SQRT(d);
-
-				// No div by zero despite warning (a happens to be well above zero)
-				int t1 = FP_DIV_T(-b + d, a);
-				int t2 = FP_DIV_T(-b - d, a);
-
-				if (t1 <= 0 && t2 <= 0) {
-					return -1;
-				}
-
-				if (t1 < t2) {
-					if (t1 > 0) {
-						return t1;
-					} else {
-						return t2;
-					}
-				}
-				else {
-					if (t2 > 0) {
-						return t2;
-					} else {
-						return t1;
-					}
-				}
-			}
-		}
-		break;
+	const int denom = FP_MUL_T(obj->a, dir->x) + FP_MUL_T(obj->b, dir->y) + FP_MUL_T(obj->c, dir->z);
+	if (denom!=0) {
+		return -FP_DIV_T(obj->d, denom);
 	}
 	return -1;
 }
 
-static void traceRay(Vec3fp *dir, int *dirDot, Hit *hit)
+static inline int intersectSphere(Object* obj, Vec3fp* dir, int dirDot)
 {
-	int t0, t1, tMin = FAR_FI;
+	if (dirDot == 0) return -1;
+
+	const int b = 2 * (FP_MUL_T(dir->x, -obj->pos.x) + FP_MUL_T(dir->y, -obj->pos.y) + FP_MUL_T(dir->z, -obj->pos.z));
+	const int c = obj->d;
+
+	int d = FP_MUL_T(b, b) - FP_MUL_T(dirDot, c);
+	if (d >= 0) {
+		d = FP_SQRT(d);
+
+		// No div by zero despite warning (a happens to be well above zero)
+		int t1 = FP_DIV_T(-b + d, dirDot);
+		int t2 = FP_DIV_T(-b - d, dirDot);
+
+		if (t1 <= 0 && t2 <= 0) {
+			return -1;
+		}
+
+		if (t1 < t2) {
+			if (t1 > 0) {
+				return t1;
+			} else {
+				return t2;
+			}
+		}
+		else {
+			if (t2 > 0) {
+				return t2;
+			} else {
+				return t1;
+			}
+		}
+	}
+	return -1;
+}
+
+static void traceRay(Vec3fp *dir, int dirDot, Hit *hit)
+{
+	int t, tMin = FAR_FI;
+	Object *obj;
 
 	hit->obj = NULL;
-	t0 = intersect(&plane, dir, 0);
-	t1 = intersect(&sphere, dir, *dirDot);
-	if (t0 > 0) { tMin = t0; hit->obj = &plane; }
-	if (t1 > 0 && t1 < tMin) { tMin = t1; hit->obj = &sphere; }
+	if (dir->y < 0) {	// cheat (this plane in this scene is under horizon always)
+		t = intersectPlane(&plane, dir);
+		if (t > 0) { tMin = t; hit->obj = &plane; }
+	}
+
+	obj = &sphere[0]; t = intersectSphere(obj, dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = obj; }
+	obj = &sphere[1]; t = intersectSphere(obj, dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = obj; }
+	obj = &sphere[2]; t = intersectSphere(obj, dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = obj; }
 
 	if (tMin < FAR_FI) {
 		hit->pos.x = FP_MUL_T(tMin, dir->x);
@@ -241,50 +243,52 @@ static void setObjectSphere(Object* obj, Vec3fp pos, int radius, int index)
 	obj->radius = radius;
 	obj->type = OBJ_SPHERE;
 	obj->index = index;
+	obj->invR = FP_DIV_T(FLT_TO_FP(1.0f), obj->radius);
 }
 
-static void printABCD(Object* obj)
+/*static void printABCD(Object* obj)
 {
 	printf("R1d_%d) %d %d %d %d\n", obj->type, obj->a, obj->b, obj->c, obj->d);
 	printf("R1f_%d) %f %f %f %f\n", obj->type, FP_TO_FLT(obj->a), FP_TO_FLT(obj->b), FP_TO_FLT(obj->c), FP_TO_FLT(obj->d));
-}
+}*/
 
 static void setupObjects()
 {
 	setObjectPlane(&plane, VEC_FLT_TO_FP(0, 0, -1), VEC_FLT_TO_FP(1, 0, 0), VEC_FLT_TO_FP(0, 0, 1));
-	setObjectSphere(&sphere, VEC_FLT_TO_FP(0, -1, 4), FLT_TO_FP(1), 2);
+	setObjectSphere(&sphere[0], VEC_FLT_TO_FP(0, -1, 4), FLT_TO_FP(0.25f), 1);
+	setObjectSphere(&sphere[1], VEC_FLT_TO_FP(-1, -1, 4), FLT_TO_FP(0.25f), 2);
+	setObjectSphere(&sphere[2], VEC_FLT_TO_FP(1, -1, 4), FLT_TO_FP(0.25f), 3);
 
 	calcABCD(&plane);
-	calcABCD(&sphere);
-
-	printABCD(&plane);
-	printABCD(&sphere);
+	for (int i = 0; i < 3; ++i) {
+		calcABCD(&sphere[i]);
+	}
 }
 
 static void updateObjects(int ticks)
 {
-	float posX = (float)sin(ticks / 650.0f) * 0.25f;
-	float posY = (float)sin(ticks / 480.0f) * 0.25f;
-	float posZ = 1.0f + (float)sin(ticks / 880.0f) * 0.5f;
-	float radius = 0.25f;
+	for (int i = 0; i < 3; ++i) {
+		float t = (float)(((i + 1) << 10) + ticks);
+		float posX = (float)sin(t / 650.0f) * 0.5f;
+		float posY = (float)sin(t / 480.0f) * 0.25f;
+		float posZ = 1.75f + (float)sin(t / 880.0f) * 0.25f;
 
-	setObjectSphere(&sphere, VEC_FLT_TO_FP(posX, posY, posZ), FLT_TO_FP(radius), 2);
-
-	calcABCD(&plane);
-	calcABCD(&sphere);
+		sphere[i].pos = VEC_FLT_TO_FP(posX, posY, posZ);
+		calcABCD(&sphere[i]);
+	}
 }
 
 void raytraceInit1(Screen* buffer)
 {
-	viewDirPerPixel = new Vec3fp[buffer->width * buffer->height];
-	viewDirDotPerPixel = new int[buffer->width * buffer->height];
+	perPixelPrecs.viewDir = new Vec3fp[buffer->width * buffer->height];
+	perPixelPrecs.dirDot = new int[buffer->width * buffer->height];
 
 	setupViewDirPerPixelLUTs(buffer);
 
 	setupObjects();
 }
 
-static inline int computeColor(Vec3fp* dir, Hit* hit)
+static inline int computeColor(Vec3fp* dir, Hit* hit, int ticks)
 {
 	Object* obj = hit->obj;
 	Vec3fp normal;
@@ -293,29 +297,35 @@ static inline int computeColor(Vec3fp* dir, Hit* hit)
 
 	if (obj) {
 		switch (obj->type) {
-		case OBJ_PLANE:
-			normal.x = obj->a;
-			normal.y = obj->b;
-			normal.z = obj->c;
+			case OBJ_PLANE:
+			{
+				int zOff = ticks << 2;
+				normal.x = obj->a;
+				normal.y = obj->b;
+				normal.z = obj->c;
 
-			ci = Vdot(dir, &normal);
-			CLAMP(ci, 0, ((1<<RP_BITS)-1));
-			u = (hit->pos.x >> 4) & 255;
-			v = (hit->pos.z >> 4) & 255;
-			ci = FP_MUL((u ^ v), ci);
+				ci = Vdot(dir, &normal);
+				CLAMP(ci, 0, ((1 << RP_BITS) - 1));
+				u = (hit->pos.x >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
+				v = ((hit->pos.z + zOff) >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
+				ci = FP_MUL((u ^ v), ci);
+			}
 			break;
 
-		case OBJ_SPHERE:
-			normal.x = -(hit->pos.x - obj->a) * 2;
-			normal.y = -(hit->pos.y - obj->b) * 2;
-			normal.z = -(hit->pos.z - obj->c) * 2;
+			case OBJ_SPHERE:
+			{
+				normal.x = -FP_MUL_T((hit->pos.x - obj->a), obj->invR);
+				normal.y = -FP_MUL_T((hit->pos.y - obj->b), obj->invR);
+				normal.z = -FP_MUL_T((hit->pos.z - obj->c), obj->invR);
 
-			//Vnormalize(&normal);
+				//Vnormalize(&normal);
 
-			ci = Vdot(&lightDir, &normal) >> (RP_BITS - COL_BITS);
-			CLAMP(ci, 0, (1<<COL_BITS)-1);
+				ci = Vdot(&lightDir, &normal) >> (RP_BITS - COL_BITS_OBJ);
+				CLAMP(ci, 0, COLS_OBJ_RANGE);
+			}
 			break;
 		}
+		ci += (obj->index << COL_BITS_OBJ);
 	}
 	return ci;
 }
@@ -323,36 +333,29 @@ static inline int computeColor(Vec3fp* dir, Hit* hit)
 static inline int computeColorObjIndex(Hit* hit)
 {
 	Object* obj = hit->obj;
-	int ci = 0;
-
 	if (obj) {
-		if (obj->type == OBJ_PLANE) {
-			return 31;
-		} else {
-			return ((obj->index + 1) << 5);
-		}
+		return (((obj->index+1) << 6) - 1);
 	}
-	return ci;
+	return 0;
 }
 
-static void renderObjects(Screen* buffer)
+static void renderObjects(Screen* buffer, int ticks)
 {
 	int count = buffer->width * buffer->height;
 	uint8* dst = (uint8*)buffer->data;
 
 	Hit hit;
-	Vec3fp* dir = viewDirPerPixel;
-	int* dirDot = viewDirDotPerPixel;
+	Vec3fp* dir = perPixelPrecs.viewDir;
+	int* dirDot = perPixelPrecs.dirDot;
 
 	lightDir = VEC_FLT_TO_FP(-0.25f, -0.5f, 0.875f);
 	Vnormalize(&lightDir);
 
 	do {
-		hit.obj = &sphere;
-		traceRay(dir, dirDot, &hit);
+		traceRay(dir, *dirDot, &hit);
 
 		//*dst++ = computeColorObjIndex(&hit);
-		*dst++ = computeColor(dir, &hit);
+		*dst++ = computeColor(dir, &hit, ticks);
 
 		dir++;
 		dirDot++;
@@ -366,5 +369,5 @@ void raytraceRun1(Screen* buffer, int ticks)
 	//renderViewDir(buffer);
 	//renderViewDirDot(buffer);
 
-	renderObjects(buffer);
+	renderObjects(buffer, ticks);
 }

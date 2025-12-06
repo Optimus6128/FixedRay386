@@ -2,7 +2,6 @@
 #define VECTOR_FP_H
 
 #define RP_BITS 12
-#define COL_BITS 8
 
 #define FLOAT_TO_FIXED(f,b) ((int)((f) * (1 << b)))
 #define INT_TO_FIXED(i,b) ((i) << b)

@@ -27,8 +27,8 @@ typedef struct Hit
 } Hit;
 
 static Object plane;
-static Object sphere;
-
+static Object sphere[3];
+static Vec3 lightDir;
 
 static Vec3 *viewDirPerPixel;
 static float* viewDirDotPerPixel;
@@ -184,20 +184,24 @@ static inline float intersect(Object* obj, Vec3* dir, float dirDot)
 	return -1;
 }
 
-static void traceRay(Vec3 *dir, float *dirDot, Hit *hit)
+static void traceRay(Vec3 *dir, float dirDot, Hit *hit)
 {
-	float t0, t1, min = FAR_F;
+	float t, tMin = FAR_F;
 
 	hit->obj = NULL;
-	t0 = intersect(&plane, dir, 0.0f);
-	t1 = intersect(&sphere, dir, *dirDot);
-	if (t0 > 0.0f) { min = t0; hit->obj = &plane; }
-	if (t1 > 0.0f && t1 < min) { min = t1; hit->obj = &sphere; }
+	t = intersect(&plane, dir, 0.0f);
+	if (t > 0.0f) { tMin = t; hit->obj = &plane; }
 
-	if (min < FAR_F) {
-		hit->pos.x = min * dir->x;
-		hit->pos.y = min * dir->y;
-		hit->pos.z = min * dir->z;
+	for (int i = 0; i < 3; ++i) {
+		Object* obj = &sphere[i];
+		t = intersect(obj, dir, dirDot);
+		if (t > 0.0f && t < tMin) { tMin = t; hit->obj = obj; }
+	}
+
+	if (tMin < FAR_F) {
+		hit->pos.x = tMin * dir->x;
+		hit->pos.y = tMin * dir->y;
+		hit->pos.z = tMin * dir->z;
 	}
 }
 
@@ -218,34 +222,35 @@ static void setObjectSphere(Object* obj, Vec3 pos, float radius, int index)
 	obj->index = index;
 }
 
-static void printABCD(Object *obj)
+/*static void printABCD(Object* obj)
 {
 	printf("R0_%d) %f %f %f %f\n", obj->type, obj->a, obj->b, obj->c, obj->d);
-}
+}*/
 
 static void setupObjects()
 {
 	setObjectPlane(&plane, Vec3(0, 0, -1), Vec3(1, 0, 0), Vec3(0, 0, 1));
-	setObjectSphere(&sphere, Vec3(0, -1, 4), 1, 2);
+	setObjectSphere(&sphere[0], Vec3(0, -1, 4), 0.25f, 1);
+	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.25f, 2);
+	setObjectSphere(&sphere[2], Vec3(1, -1, 4), 0.25f, 3);
 
 	calcABCD(&plane);
-	calcABCD(&sphere);
-
-	printABCD(&plane);
-	printABCD(&sphere);
+	for (int i = 0; i < 3; ++i) {
+		calcABCD(&sphere[i]);
+	}
 }
 
 static void updateObjects(int ticks)
 {
-	float posX = (float)sin(ticks / 650.0f) * 0.25f;
-	float posY = (float)sin(ticks / 480.0f) * 0.25f;
-	float posZ = 1.0f + (float)sin(ticks / 880.0f) * 0.5f;
-	float radius = 0.25f;
+	for (int i = 0; i < 3; ++i) {
+		float t = (float)(((i + 1) << 10) + ticks);
+		float posX = (float)sin(t / 650.0f) * 0.45f;
+		float posY = (float)sin(t / 480.0f) * 0.2f;
+		float posZ = 1.5f + (float)sin(t / 880.0f) * 0.325f;
 
-	setObjectSphere(&sphere, Vec3(posX, posY, posZ), radius, 2);
-
-	calcABCD(&plane);
-	calcABCD(&sphere);
+		sphere[i].pos = Vec3(posX, posY, posZ);
+		calcABCD(&sphere[i]);
+	}
 }
 
 void raytraceInit0(Screen* buffer)
@@ -258,7 +263,7 @@ void raytraceInit0(Screen* buffer)
 	setupObjects();
 }
 
-static inline int computeColor(Vec3* dir, Hit* hit)
+static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 {
 	Object* obj = hit->obj;
 	Vec3 normal;
@@ -266,27 +271,33 @@ static inline int computeColor(Vec3* dir, Hit* hit)
 
 	if (obj) {
 		switch (obj->type) {
-		case OBJ_PLANE:
-			normal.x = obj->a;
-			normal.y = obj->b;
-			normal.z = obj->c;
+			case OBJ_PLANE:
+			{
+				float zOff = (float)ticks * 0.001f;
+				normal.x = obj->a;
+				normal.y = obj->b;
+				normal.z = obj->c;
 
-			ci = (int)(Vdot(dir, &normal) * 256);
-			CLAMP(ci, 0, 255);
-			ci = ((((int)(hit->pos.x * 16) & 15) ^ ((int)(hit->pos.z * 16) & 15)) * ci) >> 6;
+				ci = (int)(Vdot(dir, &normal) * (1 << COL_BITS));
+				CLAMP(ci, 0, COLS_RANGE);
+				ci = ((((int)(hit->pos.x * 16) & 15) ^ ((int)((hit->pos.z + zOff) * 16) & 15)) * ci) >> COL_BITS_OBJ;
+			}
 			break;
 
-		case OBJ_SPHERE:
-			normal.x = -(hit->pos.x - obj->a);
-			normal.y = -(hit->pos.y - obj->b);
-			normal.z = -(hit->pos.z - obj->c);
+			case OBJ_SPHERE:
+			{
+				normal.x = -(hit->pos.x - obj->a);
+				normal.y = -(hit->pos.y - obj->b);
+				normal.z = -(hit->pos.z - obj->c);
 
-			Vnormalize(&normal);
+				Vnormalize(&normal);
 
-			ci = (int)(Vdot(dir, &normal) * 256);
-			CLAMP(ci, 0, 255);
-			break;
+				ci = (int)(Vdot(&lightDir, &normal) * (1 << COL_BITS_OBJ));
+				CLAMP(ci, 0, COLS_OBJ_RANGE);
+				break;
+			}
 		}
+		ci += (obj->index << COL_BITS_OBJ);
 	}
 	return ci;
 }
@@ -294,19 +305,13 @@ static inline int computeColor(Vec3* dir, Hit* hit)
 static inline int computeColorObjIndex(Hit* hit)
 {
 	Object* obj = hit->obj;
-	int ci = 0;
-
 	if (obj) {
-		if (obj->type == OBJ_PLANE) {
-			return 31;
-		} else {
-			return ((obj->index + 1) << 5);
-		}
+		return (((obj->index+1) << 6) - 1);
 	}
-	return ci;
+	return 0;
 }
 
-static void renderObjects(Screen* buffer)
+static void renderObjects(Screen* buffer, int ticks)
 {
 	int count = buffer->width * buffer->height;
 	uint8* dst = (uint8*)buffer->data;
@@ -315,11 +320,14 @@ static void renderObjects(Screen* buffer)
 	Vec3* dir = viewDirPerPixel;
 	float* dirDot = viewDirDotPerPixel;
 
-	do {
-		traceRay(dir, dirDot, &hit);
+	lightDir = Vec3(-0.25f, -0.5f, 0.875f);
+	Vnormalize(&lightDir);
 
-		*dst++ = computeColorObjIndex(&hit);
-		//*dst++ = computeColor(dir, &hit);
+	do {
+		traceRay(dir, *dirDot, &hit);
+
+		//*dst++ = computeColorObjIndex(&hit);
+		*dst++ = computeColor(dir, &hit, ticks);
 
 		dir++;
 		dirDot++;
@@ -333,5 +341,5 @@ void raytraceRun0(Screen* buffer, int ticks)
 	//renderViewDir(buffer);
 	//renderViewDirDot(buffer);
 
-	renderObjects(buffer);
+	renderObjects(buffer, ticks);
 }
