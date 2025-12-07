@@ -40,7 +40,27 @@ static Vec3fp lightDir;
 
 static PerPixelPrecs perPixelPrecs;
 
+static int *planeYt;
 
+static void setupPlaneYprecs(Screen* buffer)
+{
+	const int screenWidth = buffer->width;
+	const int screenHeight = buffer->height;
+
+	Object* obj = &plane;
+
+	planeYt = new int[screenHeight];
+
+	for (int y = 0; y < screenHeight; ++y) {
+		Vec3fp* dir = &perPixelPrecs.viewDir[y * screenWidth];
+		const int denom = FP_MUL_T(obj->a, dir->x) + FP_MUL_T(obj->b, dir->y) + FP_MUL_T(obj->c, dir->z);
+		int t = -1;
+		if (denom != 0) {
+			t = -FP_DIV_T(obj->d, denom);
+		}
+		planeYt[y] = t;
+	}
+}
 
 static void setupViewDirPerPixelLUTs(Screen* buffer)
 {
@@ -206,15 +226,13 @@ static inline int intersectSphere(Object* obj, Vec3fp* dir, int dirDot)
 	return -1;
 }
 
-static void traceRay(Vec3fp *dir, int dirDot, Hit *hit)
+static void traceRay(Vec3fp *dir, int dirDot, Hit *hit, int y)
 {
 	int t, tMin = FAR_FI;
 
 	hit->obj = NULL;
-	if (dir->y < 0) {	// cheat (this plane in this scene is under horizon always)
-		t = intersectPlane(&plane, dir);
-		if (t > 0) { tMin = t; hit->obj = &plane; }
-	}
+	t = planeYt[y];	// cheat, we don't even call intersectPlane as it's a very trivial parallel to ground plane, prestored t hit per scanline
+	if (t > 0) { tMin = t; hit->obj = &plane; }
 
 	t = intersectSphere(&sphere[0], dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[0]; }
 	t = intersectSphere(&sphere[1], dir, dirDot); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[1]; }
@@ -285,6 +303,8 @@ void raytraceInit1(Screen* buffer)
 	setupViewDirPerPixelLUTs(buffer);
 
 	setupObjects();
+
+	setupPlaneYprecs(buffer);
 }
 
 static inline int computeColor(Vec3fp* dir, Hit* hit, int ticks)
@@ -338,7 +358,8 @@ static inline int computeColorObjIndex(Hit* hit)
 
 static void renderObjects(Screen* buffer, int ticks)
 {
-	int count = buffer->width * buffer->height;
+	const int width = buffer->width;
+	const int height = buffer->height;
 	uint8* dst = (uint8*)buffer->data;
 
 	Hit hit;
@@ -348,15 +369,17 @@ static void renderObjects(Screen* buffer, int ticks)
 	lightDir = VEC_FLT_TO_FP(-0.25f, -0.5f, 0.875f);
 	Vnormalize(&lightDir);
 
-	do {
-		traceRay(dir, *dirDot, &hit);
+	for (int y=0; y<height; ++y) {
+		for (int x = 0; x < width; ++x) {
+			traceRay(dir, *dirDot, &hit, y);
 
-		//*dst++ = computeColorObjIndex(&hit);
-		*dst++ = computeColor(dir, &hit, ticks);
+			//*dst++ = computeColorObjIndex(&hit);
+			*dst++ = computeColor(dir, &hit, ticks);
 
-		dir++;
-		dirDot++;
-	} while (--count != 0);
+			dir++;
+			dirDot++;
+		}
+	}
 }
 
 void raytraceRun1(Screen* buffer, int ticks)
