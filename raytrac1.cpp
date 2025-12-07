@@ -41,11 +41,17 @@ typedef struct PerPixelPrecs
 
 static Object plane;
 static Object sphere[3];
-static Vec3fp lightDir;
+static Vec3fp lightDir0;
 
 static PerPixelPrecs perPixelPrecs;
 
+#define HIT_BUFF_WIDTH ((320 / 2) + 1)
+#define HIT_BUFF_HEIGHT ((200 / 2) + 1)
+
+static Hit* hitBuffer;
+
 static int *planeYt;
+static int planeTicks;
 
 static void setupPlaneYprecs(Screen* buffer)
 {
@@ -54,9 +60,9 @@ static void setupPlaneYprecs(Screen* buffer)
 
 	Object* obj = &plane;
 
-	planeYt = new int[screenHeight];
+	planeYt = new int[screenHeight+1];
 
-	for (int y = 0; y < screenHeight; ++y) {
+	for (int y = 0; y <= screenHeight; ++y) {
 		Vec3fp* dir = &perPixelPrecs.viewDir[y * screenWidth];
 		const int denom = FP_MUL_T(obj->a, dir->x) + FP_MUL_T(obj->b, dir->y) + FP_MUL_T(obj->c, dir->z);
 		int t = -1;
@@ -80,9 +86,9 @@ static void setupViewDirPerPixelLUTs(Screen* buffer)
 	PerPixelVars* perPixelVars = perPixelPrecs.vars;
 
 	int Ydir = (screenHeight / 2) * Yinc;
-	for (int y = 0; y < screenHeight; y++) {
+	for (int y = 0; y <= screenHeight; y++) {
 		int Xdir = (-screenWidth / 2) * Xinc;
-		for (int x = 0; x < screenWidth; x++) {
+		for (int x = 0; x <= screenWidth; x++) {
 			int dd;
 			dir->x = Xdir;
 			dir->y = Ydir;
@@ -187,49 +193,18 @@ static inline int intersectSphere(Object* obj, Vec3fp* dir, PerPixelVars *perPix
 	return -1;
 }
 
-#define UNROLL_SPHERES_RAYTRACE
-
 static void traceRay(Vec3fp *dir, PerPixelVars *perPixelVars, Hit *hit, int y)
 {
 	int t, tMin = FAR_FI;
-	Object *obj;
 
 	hit->obj = NULL;
 	//t = intersectPlane(&plane, dir);
 	t = planeYt[y];	// cheat, we don't even call intersectPlane as it's a very trivial parallel to ground plane, prestored t hit per scanline
 	if (t > 0) { tMin = t; hit->obj = &plane; }
 
-	#ifndef UNROLL_SPHERES_RAYTRACE
-		t = intersectSphere(&sphere[0], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[0]; }
-		t = intersectSphere(&sphere[1], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[1]; }
-		t = intersectSphere(&sphere[2], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[2]; }
-	#else
-		int dirDot = perPixelVars->dirDot;
-		int invDirDot = perPixelVars->invDirDot;
-		int b, d;
-
-		obj = &sphere[0];
-		b = 2 * (FP_MUL_T(dir->x, -obj->pos.x) + FP_MUL_T(dir->y, -obj->pos.y) + FP_MUL_T(dir->z, -obj->pos.z));
-		d = FP_MUL_T(b, b) - FP_MUL_T(dirDot, obj->d);
-		if (d >= 0) {
-			d = FP_SQRT(d); t = FP_MUL_T(-b - d, invDirDot);
-			if (t < tMin) { tMin = t; hit->obj = obj; }
-		}
-		obj = &sphere[1];
-		b = 2 * (FP_MUL_T(dir->x, -obj->pos.x) + FP_MUL_T(dir->y, -obj->pos.y) + FP_MUL_T(dir->z, -obj->pos.z));
-		d = FP_MUL_T(b, b) - FP_MUL_T(dirDot, obj->d);
-		if (d >= 0) {
-			d = FP_SQRT(d); t = FP_MUL_T(-b - d, invDirDot);
-			if (t < tMin) { tMin = t; hit->obj = obj; }
-		}
-		obj = &sphere[2];
-		b = 2 * (FP_MUL_T(dir->x, -obj->pos.x) + FP_MUL_T(dir->y, -obj->pos.y) + FP_MUL_T(dir->z, -obj->pos.z));
-		d = FP_MUL_T(b, b) - FP_MUL_T(dirDot, obj->d);
-		if (d >= 0) {
-			d = FP_SQRT(d); t = FP_MUL_T(-b - d, invDirDot);
-			if (t < tMin) { tMin = t; hit->obj = obj; }
-		}
-	#endif
+	t = intersectSphere(&sphere[0], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[0]; }
+	t = intersectSphere(&sphere[1], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[1]; }
+	t = intersectSphere(&sphere[2], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[2]; }
 
 	if (tMin < FAR_FI) {
 		hit->pos.x = FP_MUL_T(tMin, dir->x);
@@ -286,21 +261,30 @@ static void updateObjects(int ticks)
 		sphere[i].pos = VEC_FLT_TO_FP(posX, posY, posZ);
 		calcABCD(&sphere[i]);
 	}
+
+	planeTicks = ticks << 2;
 }
 
 void raytraceInit1(Screen* buffer)
 {
-	perPixelPrecs.viewDir = new Vec3fp[buffer->width * buffer->height];
-	perPixelPrecs.vars = new PerPixelVars[buffer->width * buffer->height];
+	const int bufferSize = (buffer->width + 1) * (buffer->height + 1);
+
+	hitBuffer = new Hit[HIT_BUFF_WIDTH * HIT_BUFF_HEIGHT];
+
+	perPixelPrecs.viewDir = new Vec3fp[bufferSize];
+	perPixelPrecs.vars = new PerPixelVars[bufferSize];
 
 	setupViewDirPerPixelLUTs(buffer);
 
 	setupObjects();
 
 	setupPlaneYprecs(buffer);
+
+	lightDir0 = VEC_FLT_TO_FP(-0.25f, -0.5f, 0.875f);
+	Vnormalize(&lightDir0);
 }
 
-static inline int computeColor(Vec3fp* dir, Hit* hit, int ticks)
+static inline int computeColor(Vec3fp* dir, Hit* hit)
 {
 	Object* obj = hit->obj;
 	Vec3fp normal;
@@ -309,37 +293,35 @@ static inline int computeColor(Vec3fp* dir, Hit* hit, int ticks)
 
 	if (obj) {
 		switch (obj->type) {
-			case OBJ_PLANE:
-			{
-				int zOff = ticks << 2;
-				normal.x = obj->a;
-				normal.y = obj->b;
-				normal.z = obj->c;
+		case OBJ_PLANE:
+		{
+			normal.x = obj->a;
+			normal.y = obj->b;
+			normal.z = obj->c;
 
-				ci = Vdot(dir, &normal);
-				CLAMP(ci, 0, ((1 << RP_BITS) - 1));
-				u = (hit->pos.x >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
-				v = ((hit->pos.z + zOff) >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
-				ci = FP_MUL((u ^ v), ci);
-			}
-			break;
+			ci = Vdot(dir, &normal);
+			CLAMP(ci, 0, ((1 << RP_BITS) - 1));
+			u = (hit->pos.x >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
+			v = ((hit->pos.z + planeTicks) >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
+			ci = FP_MUL((u ^ v), ci);
+		}
+		break;
 
-			case OBJ_SPHERE:
-			{
-				normal.x = -FP_MUL_T((hit->pos.x - obj->a), obj->invR);
-				normal.y = -FP_MUL_T((hit->pos.y - obj->b), obj->invR);
-				normal.z = -FP_MUL_T((hit->pos.z - obj->c), obj->invR);
+		case OBJ_SPHERE:
+		{
+			normal.x = -FP_MUL_T((hit->pos.x - obj->a), obj->invR);
+			normal.y = -FP_MUL_T((hit->pos.y - obj->b), obj->invR);
+			normal.z = -FP_MUL_T((hit->pos.z - obj->c), obj->invR);
 
-				ci = Vdot(&lightDir, &normal) >> (RP_BITS - COL_BITS_OBJ);
-				CLAMP(ci, 0, COLS_OBJ_RANGE);
-			}
-			break;
+			ci = Vdot(&lightDir0, &normal) >> (RP_BITS - COL_BITS_OBJ);
+			CLAMP(ci, 0, COLS_OBJ_RANGE);
+		}
+		break;
 		}
 		ci += (obj->index << COL_BITS_OBJ);
 	}
 	return ci;
 }
-
 static inline int computeColorObjIndex(Hit* hit)
 {
 	Object* obj = hit->obj;
@@ -359,25 +341,161 @@ static void renderObjects(Screen* buffer, int ticks)
 	Vec3fp* dir = perPixelPrecs.viewDir;
 	PerPixelVars* perPixelVars = perPixelPrecs.vars;
 
-	lightDir = VEC_FLT_TO_FP(-0.25f, -0.5f, 0.875f);
-	Vnormalize(&lightDir);
-
 	for (int y=0; y<height; ++y) {
 		for (int x = 0; x < width; ++x) {
 			traceRay(dir, perPixelVars, &hit, y);
 
 			//*dst++ = computeColorObjIndex(&hit);
-			*dst++ = computeColor(dir, &hit, ticks);
+			*dst++ = computeColor(dir, &hit);
 
 			dir++;
 			perPixelVars++;
 		}
+		dir++;
+		perPixelVars++;
 	}
+}
+
+static int computeColorNothing(Vec3fp* /*dir*/, Hit* /*hit*/)
+{
+	return 0;
+}
+
+static int computeColorPlane(Vec3fp* dir, Hit* hit)
+{
+	Object* obj = hit->obj;
+	Vec3fp normal;
+	int ci = 0;
+	int u, v;
+
+	normal.x = obj->a;
+	normal.y = obj->b;
+	normal.z = obj->c;
+
+	ci = Vdot(dir, &normal);
+	CLAMP(ci, 0, ((1 << RP_BITS) - 1));
+	u = (hit->pos.x >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
+	v = ((hit->pos.z + planeTicks) >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
+	ci = FP_MUL((u ^ v), ci);
+	ci += (obj->index << COL_BITS_OBJ);
+
+	return ci;
+}
+
+static int computeColorSphere(Vec3fp* /*dir*/, Hit* hit)
+{
+	Object* obj = hit->obj;
+	Vec3fp normal;
+	int ci = 0;
+	//int u, v;
+
+	normal.x = -FP_MUL_T((hit->pos.x - obj->a), obj->invR);
+	normal.y = -FP_MUL_T((hit->pos.y - obj->b), obj->invR);
+	normal.z = -FP_MUL_T((hit->pos.z - obj->c), obj->invR);
+
+	ci = Vdot(&lightDir0, &normal) >> (RP_BITS - COL_BITS_OBJ);
+	CLAMP(ci, 0, COLS_OBJ_RANGE);
+	ci += (obj->index << COL_BITS_OBJ);
+
+	return ci;
+}
+
+static int (*computeColorObject[OBJ_TYPES_COUNT])(Vec3fp*, Hit*) = { computeColorNothing, computeColorPlane, computeColorSphere };
+
+static void renderSubdiv2x(Screen* buffer, int ticks)
+{
+	const int width = buffer->width;
+	const int height = buffer->height;
+	uint8* dst = (uint8*)buffer->data;
+
+	Vec3fp* dir = perPixelPrecs.viewDir;
+	PerPixelVars* perPixelVars = perPixelPrecs.vars;
+
+	Hit* hitBuff = hitBuffer;
+	for (int y = 0; y < height; y += 2) {
+		for (int x = 0; x < width; x += 2) {
+			Hit* hitUL = &hitBuff[0];
+			Hit* hitUR = &hitBuff[1];
+			Hit* hitLL = &hitBuff[HIT_BUFF_WIDTH];
+			Hit* hitLR = &hitBuff[HIT_BUFF_WIDTH+1];
+
+			Hit hitP;
+			int objType = OBJ_NOTHING;
+
+			if (hitUL->obj) {
+				objType = hitUL->obj->type;
+			}
+			int (*computeColorFunc)(Vec3fp*, Hit*) = computeColorObject[objType];
+			*dst = computeColorFunc(dir, hitUL);
+
+			hitP.obj = hitUL->obj;
+			if (hitUL->obj == hitUR->obj && hitLL->obj == hitLR->obj && hitUL->obj == hitLL->obj) {
+				if (objType == OBJ_NOTHING) {
+					*dst = 0;
+					*(dst+1) = 0;
+					*(dst + width) = 0;
+					*(dst + width + 1) = 0;
+				} else {
+					const int posULx = hitUL->pos.x;
+					const int posULy = hitUL->pos.y;
+					const int posULz = hitUL->pos.z;
+					Vec3fp* posUR = &hitUR->pos;
+					Vec3fp* posLL = &hitLL->pos;
+					Vec3fp* posLR = &hitLR->pos;
+
+					hitP.pos.x = (posULx + posUR->x) >> 1; hitP.pos.y = (posULy + posUR->y) >> 1; hitP.pos.z = (posULz + posUR->z) >> 1;
+					*(dst + 1) = computeColorFunc(dir, &hitP);
+					hitP.pos.x = (posULx + posLL->x) >> 1; hitP.pos.y = (posULy + posLL->y) >> 1; hitP.pos.z = (posULz + posLL->z) >> 1;
+					*(dst + width) = computeColorFunc(dir, &hitP);
+					hitP.pos.x = (posULx + posLR->x) >> 1; hitP.pos.y = (posULy + posLR->y) >> 1; hitP.pos.z = (posULz + posLR->z) >> 1;
+					*(dst + width + 1) = computeColorFunc(dir, &hitP);
+				}
+			} else {
+				traceRay(dir + 1, perPixelVars+1, &hitP, y); *(dst + 1) = computeColor(dir, &hitP);
+				traceRay(dir + width + 1, perPixelVars + width + 1, &hitP, y + 1); *(dst + width) = computeColor(dir + width + 1, &hitP);
+				traceRay(dir + width + 2, perPixelVars + width + 2, &hitP, y + 1); *(dst + width + 1) = computeColor(dir + width + 2, &hitP);
+			}
+
+			perPixelVars += 2;
+			dir += 2;
+			dst += 2;
+			hitBuff++;
+		}
+		perPixelVars += width + 2;
+		dir += width + 2;
+		dst += width;
+		hitBuff++;
+	}
+}
+
+static void renderObjectsSubdiv(Screen* buffer, int ticks)
+{
+	const int width = buffer->width;
+	const int height = buffer->height;
+
+	Vec3fp* dir = perPixelPrecs.viewDir;
+	PerPixelVars* perPixelVars = perPixelPrecs.vars;
+
+	Hit *hitBuff = hitBuffer;
+	for (int y = 0; y <= height; y+=2) {
+		for (int x = 0; x <= width; x+=2) {
+			traceRay(dir, perPixelVars, hitBuff, y);
+
+			perPixelVars+=2;
+			dir += 2;
+			hitBuff++;
+		}
+		perPixelVars += width;
+		dir += width;
+	}
+
+	renderSubdiv2x(buffer, ticks);
 }
 
 void raytraceRun1(Screen* buffer, int ticks)
 {
 	updateObjects(ticks);
 
-	renderObjects(buffer, ticks);
+	//renderObjects(buffer, ticks);
+	renderObjectsSubdiv(buffer, ticks);
 }

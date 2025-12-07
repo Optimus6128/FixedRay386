@@ -9,7 +9,7 @@
 #define COLS_RANGE ((1<<COL_BITS)-1)
 #define COLS_OBJ_RANGE ((1<<COL_BITS_OBJ)-1)
 
-enum { OBJ_NOTHING, OBJ_PLANE, OBJ_SPHERE };
+enum { OBJ_NOTHING, OBJ_PLANE, OBJ_SPHERE, OBJ_TYPES_COUNT };
 
 void raytraceInit0(Screen *buffer);
 void raytraceRun0(Screen *buffer, int ticks);
