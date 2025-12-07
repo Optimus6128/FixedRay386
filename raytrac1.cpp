@@ -187,18 +187,49 @@ static inline int intersectSphere(Object* obj, Vec3fp* dir, PerPixelVars *perPix
 	return -1;
 }
 
+#define UNROLL_SPHERES_RAYTRACE
+
 static void traceRay(Vec3fp *dir, PerPixelVars *perPixelVars, Hit *hit, int y)
 {
 	int t, tMin = FAR_FI;
+	Object *obj;
 
 	hit->obj = NULL;
 	//t = intersectPlane(&plane, dir);
 	t = planeYt[y];	// cheat, we don't even call intersectPlane as it's a very trivial parallel to ground plane, prestored t hit per scanline
 	if (t > 0) { tMin = t; hit->obj = &plane; }
 
-	t = intersectSphere(&sphere[0], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[0]; }
-	t = intersectSphere(&sphere[1], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[1]; }
-	t = intersectSphere(&sphere[2], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[2]; }
+	#ifndef UNROLL_SPHERES_RAYTRACE
+		t = intersectSphere(&sphere[0], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[0]; }
+		t = intersectSphere(&sphere[1], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[1]; }
+		t = intersectSphere(&sphere[2], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[2]; }
+	#else
+		int dirDot = perPixelVars->dirDot;
+		int invDirDot = perPixelVars->invDirDot;
+		int b, d;
+
+		obj = &sphere[0];
+		b = 2 * (FP_MUL_T(dir->x, -obj->pos.x) + FP_MUL_T(dir->y, -obj->pos.y) + FP_MUL_T(dir->z, -obj->pos.z));
+		d = FP_MUL_T(b, b) - FP_MUL_T(dirDot, obj->d);
+		if (d >= 0) {
+			d = FP_SQRT(d); t = FP_MUL_T(-b - d, invDirDot);
+			if (t < tMin) { tMin = t; hit->obj = obj; }
+		}
+		obj = &sphere[1];
+		b = 2 * (FP_MUL_T(dir->x, -obj->pos.x) + FP_MUL_T(dir->y, -obj->pos.y) + FP_MUL_T(dir->z, -obj->pos.z));
+		d = FP_MUL_T(b, b) - FP_MUL_T(dirDot, obj->d);
+		if (d >= 0) {
+			d = FP_SQRT(d); t = FP_MUL_T(-b - d, invDirDot);
+			if (t < tMin) { tMin = t; hit->obj = obj; }
+		}
+		obj = &sphere[2];
+		b = 2 * (FP_MUL_T(dir->x, -obj->pos.x) + FP_MUL_T(dir->y, -obj->pos.y) + FP_MUL_T(dir->z, -obj->pos.z));
+		d = FP_MUL_T(b, b) - FP_MUL_T(dirDot, obj->d);
+		if (d >= 0) {
+			d = FP_SQRT(d); t = FP_MUL_T(-b - d, invDirDot);
+			if (t < tMin) { tMin = t; hit->obj = obj; }
+		}
+	#endif
 
 	if (tMin < FAR_FI) {
 		hit->pos.x = FP_MUL_T(tMin, dir->x);
