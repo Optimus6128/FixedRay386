@@ -11,6 +11,9 @@
 
 #define FAR_FI (1 << 30)
 
+#define RT_WIDTH 320
+#define RT_HEIGHT 200
+
 typedef struct Object
 {
 	int type;
@@ -45,25 +48,22 @@ static Vec3fp lightDir0;
 
 static PerPixelPrecs perPixelPrecs;
 
-#define HIT_BUFF_WIDTH ((320 / 2) + 1)
-#define HIT_BUFF_HEIGHT ((200 / 2) + 1)
+#define HIT_BUFF_WIDTH ((RT_WIDTH / 2) + 1)
+#define HIT_BUFF_HEIGHT ((RT_HEIGHT / 2) + 1)
 
 static Hit* hitBuffer;
 
 static int *planeYt;
 static int planeTicks;
 
-static void setupPlaneYprecs(Screen* buffer)
+static void setupPlaneYprecs()
 {
-	const int screenWidth = buffer->width;
-	const int screenHeight = buffer->height;
-
 	Object* obj = &plane;
 
-	planeYt = new int[screenHeight+1];
+	planeYt = new int[RT_HEIGHT+1];
 
-	for (int y = 0; y <= screenHeight; ++y) {
-		Vec3fp* dir = &perPixelPrecs.viewDir[y * screenWidth];
+	for (int y = 0; y <= RT_HEIGHT; ++y) {
+		Vec3fp* dir = &perPixelPrecs.viewDir[y * RT_WIDTH];
 		const int denom = FP_MUL_T(obj->a, dir->x) + FP_MUL_T(obj->b, dir->y) + FP_MUL_T(obj->c, dir->z);
 		int t = -1;
 		if (denom != 0) {
@@ -73,22 +73,20 @@ static void setupPlaneYprecs(Screen* buffer)
 	}
 }
 
-static void setupViewDirPerPixelLUTs(Screen* buffer)
+static void setupViewDirPerPixelLUTs()
 {
-	const int screenWidth = buffer->width;
-	const int screenHeight = buffer->height;
-	const float aspectRatio = (float)screenHeight / (float)screenWidth;
+	const float aspectRatio = (float)RT_HEIGHT / (float)RT_WIDTH;
 
-	const int Xinc = FLT_TO_FP(2.0f / (screenWidth - 1));
-	const int Yinc = FLT_TO_FP((2.0f / (screenHeight - 1)) * aspectRatio);
+	const int Xinc = FLT_TO_FP(2.0f / (RT_WIDTH - 1));
+	const int Yinc = FLT_TO_FP((2.0f / (RT_HEIGHT - 1)) * aspectRatio);
 
 	Vec3fp* dir = perPixelPrecs.viewDir;
 	PerPixelVars* perPixelVars = perPixelPrecs.vars;
 
-	int Ydir = (screenHeight / 2) * Yinc;
-	for (int y = 0; y <= screenHeight; y++) {
-		int Xdir = (-screenWidth / 2) * Xinc;
-		for (int x = 0; x <= screenWidth; x++) {
+	int Ydir = (RT_HEIGHT / 2) * Yinc;
+	for (int y = 0; y <= RT_HEIGHT; y++) {
+		int Xdir = (-RT_WIDTH / 2) * Xinc;
+		for (int x = 0; x <= RT_WIDTH; x++) {
 			int dd;
 			dir->x = Xdir;
 			dir->y = Ydir;
@@ -265,20 +263,20 @@ static void updateObjects(int ticks)
 	planeTicks = ticks << 2;
 }
 
-void raytraceInit1(Screen* buffer)
+void raytraceInit1()
 {
-	const int bufferSize = (buffer->width + 1) * (buffer->height + 1);
+	const int bufferSize = (RT_WIDTH + 1) * (RT_HEIGHT + 1);
 
 	hitBuffer = new Hit[HIT_BUFF_WIDTH * HIT_BUFF_HEIGHT];
 
 	perPixelPrecs.viewDir = new Vec3fp[bufferSize];
 	perPixelPrecs.vars = new PerPixelVars[bufferSize];
 
-	setupViewDirPerPixelLUTs(buffer);
+	setupViewDirPerPixelLUTs();
 
 	setupObjects();
 
-	setupPlaneYprecs(buffer);
+	setupPlaneYprecs();
 
 	lightDir0 = VEC_FLT_TO_FP(-0.25f, -0.5f, 0.875f);
 	Vnormalize(&lightDir0);
@@ -333,16 +331,14 @@ static inline int computeColorObjIndex(Hit* hit)
 
 static void renderObjects(Screen* buffer, int ticks)
 {
-	const int width = buffer->width;
-	const int height = buffer->height;
 	uint8* dst = (uint8*)buffer->data;
 
 	Hit hit;
 	Vec3fp* dir = perPixelPrecs.viewDir;
 	PerPixelVars* perPixelVars = perPixelPrecs.vars;
 
-	for (int y=0; y<height; ++y) {
-		for (int x = 0; x < width; ++x) {
+	for (int y=0; y<RT_HEIGHT; ++y) {
+		for (int x = 0; x < RT_WIDTH; ++x) {
 			traceRay(dir, perPixelVars, &hit, y);
 
 			//*dst++ = computeColorObjIndex(&hit);
@@ -404,16 +400,14 @@ static int (*computeColorObject[OBJ_TYPES_COUNT])(Vec3fp*, Hit*) = { computeColo
 
 static void renderSubdiv2x(Screen* buffer, int ticks)
 {
-	const int width = buffer->width;
-	const int height = buffer->height;
 	uint8* dst = (uint8*)buffer->data;
 
 	Vec3fp* dir = perPixelPrecs.viewDir;
 	PerPixelVars* perPixelVars = perPixelPrecs.vars;
 
 	Hit* hitBuff = hitBuffer;
-	for (int y = 0; y < height; y += 2) {
-		for (int x = 0; x < width; x += 2) {
+	for (int y = 0; y < RT_HEIGHT; y += 2) {
+		for (int x = 0; x < RT_WIDTH; x += 2) {
 			Hit* hitUL = &hitBuff[0];
 			Hit* hitUR = &hitBuff[1];
 			Hit* hitLL = &hitBuff[HIT_BUFF_WIDTH];
@@ -433,8 +427,8 @@ static void renderSubdiv2x(Screen* buffer, int ticks)
 				if (objType == OBJ_NOTHING) {
 					*dst = 0;
 					*(dst+1) = 0;
-					*(dst + width) = 0;
-					*(dst + width + 1) = 0;
+					*(dst + RT_WIDTH) = 0;
+					*(dst + RT_WIDTH + 1) = 0;
 				} else {
 					const int posULx = hitUL->pos.x;
 					const int posULy = hitUL->pos.y;
@@ -446,14 +440,14 @@ static void renderSubdiv2x(Screen* buffer, int ticks)
 					hitP.pos.x = (posULx + posUR->x) >> 1; hitP.pos.y = (posULy + posUR->y) >> 1; hitP.pos.z = (posULz + posUR->z) >> 1;
 					*(dst + 1) = computeColorFunc(dir, &hitP);
 					hitP.pos.x = (posULx + posLL->x) >> 1; hitP.pos.y = (posULy + posLL->y) >> 1; hitP.pos.z = (posULz + posLL->z) >> 1;
-					*(dst + width) = computeColorFunc(dir, &hitP);
+					*(dst + RT_WIDTH) = computeColorFunc(dir, &hitP);
 					hitP.pos.x = (posULx + posLR->x) >> 1; hitP.pos.y = (posULy + posLR->y) >> 1; hitP.pos.z = (posULz + posLR->z) >> 1;
-					*(dst + width + 1) = computeColorFunc(dir, &hitP);
+					*(dst + RT_WIDTH + 1) = computeColorFunc(dir, &hitP);
 				}
 			} else {
 				traceRay(dir + 1, perPixelVars+1, &hitP, y); *(dst + 1) = computeColor(dir, &hitP);
-				traceRay(dir + width + 1, perPixelVars + width + 1, &hitP, y + 1); *(dst + width) = computeColor(dir + width + 1, &hitP);
-				traceRay(dir + width + 2, perPixelVars + width + 2, &hitP, y + 1); *(dst + width + 1) = computeColor(dir + width + 2, &hitP);
+				traceRay(dir + RT_WIDTH + 1, perPixelVars + RT_WIDTH + 1, &hitP, y + 1); *(dst + RT_WIDTH) = computeColor(dir + RT_WIDTH + 1, &hitP);
+				traceRay(dir + RT_WIDTH + 2, perPixelVars + RT_WIDTH + 2, &hitP, y + 1); *(dst + RT_WIDTH + 1) = computeColor(dir + RT_WIDTH + 2, &hitP);
 			}
 
 			perPixelVars += 2;
@@ -461,32 +455,132 @@ static void renderSubdiv2x(Screen* buffer, int ticks)
 			dst += 2;
 			hitBuff++;
 		}
-		perPixelVars += width + 2;
-		dir += width + 2;
-		dst += width;
+		perPixelVars += RT_WIDTH + 2;
+		dir += RT_WIDTH + 2;
+		dst += RT_WIDTH;
 		hitBuff++;
 	}
 }
 
-static void renderObjectsSubdiv(Screen* buffer, int ticks)
+static void renderSubdiv4x(Screen* buffer, int ticks)
 {
-	const int width = buffer->width;
-	const int height = buffer->height;
+	uint8* dst = (uint8*)buffer->data;
 
+	Vec3fp* dir = perPixelPrecs.viewDir;
+	PerPixelVars* perPixelVars = perPixelPrecs.vars;
+	Hit* hitBuff = hitBuffer;
+
+	for (int y = 0; y < RT_HEIGHT; y += 4) {
+		for (int x = 0; x < RT_WIDTH; x += 4) {
+			Hit* hitUL = &hitBuff[0];
+			Hit* hitUR = &hitBuff[2];
+			Hit* hitLL = &hitBuff[2*HIT_BUFF_WIDTH];
+			Hit* hitLR = &hitBuff[2*HIT_BUFF_WIDTH+2];
+
+			Hit hitP;
+			int objType = OBJ_NOTHING;
+			uint8 col;
+			uint16 col16;
+			uint16* dst16 = (uint16*)dst;
+
+			if (hitUL->obj) {
+				objType = hitUL->obj->type;
+			}
+			int (*computeColorFunc)(Vec3fp*, Hit*) = computeColorObject[objType];
+			col = computeColorFunc(dir, hitUL);
+			col16 = (col << 8) | col;
+
+			*dst16 = col16;
+			*(dst16+160) = col16;
+
+			hitP.obj = hitUL->obj;
+			if (hitUL->obj == hitUR->obj && hitLL->obj == hitLR->obj && hitUL->obj == hitLL->obj) {
+				if (objType == OBJ_NOTHING) {
+					uint32* dst32 = (uint32*)dst;
+					*dst32 = 0;
+					*(dst32 + 80) = 0;
+					*(dst32 + 160) = 0;
+					*(dst32 + 240) = 0;
+				} else {
+					const int posULx = hitUL->pos.x;
+					const int posULy = hitUL->pos.y;
+					const int posULz = hitUL->pos.z;
+					Vec3fp* posUR = &hitUR->pos;
+					Vec3fp* posLL = &hitLL->pos;
+					Vec3fp* posLR = &hitLR->pos;
+
+					hitP.pos.x = (posULx + posUR->x) >> 1; hitP.pos.y = (posULy + posUR->y) >> 1; hitP.pos.z = (posULz + posUR->z) >> 1;
+					col = computeColorFunc(dir, &hitP); col16 = (col << 8) | col;
+					*(dst16+1) = col16; *(dst16+161) = col16;
+
+					hitP.pos.x = (posULx + posLL->x) >> 1; hitP.pos.y = (posULy + posLL->y) >> 1; hitP.pos.z = (posULz + posLL->z) >> 1;
+					col = computeColorFunc(dir, &hitP); col16 = (col << 8) | col;
+					*(dst16 + 320) = col16; *(dst16+480) = col16;
+
+					hitP.pos.x = (posULx + posLR->x) >> 1; hitP.pos.y = (posULy + posLR->y) >> 1; hitP.pos.z = (posULz + posLR->z) >> 1;
+					col = computeColorFunc(dir, &hitP); col16 = (col << 8) | col;
+					*(dst16 + 321) = col16; *(dst16+481) = col16;
+				}
+			} else {
+				traceRay(dir + 1, perPixelVars+1, &hitP, y); col = computeColor(dir, &hitP); col16 = (col << 8) | col;
+				*(dst16+1) = col16; *(dst16+161) = col16;
+				traceRay(dir + RT_WIDTH + 1, perPixelVars + RT_WIDTH + 1, &hitP, y + 1); col = computeColor(dir + RT_WIDTH + 1, &hitP); col16 = (col << 8) | col;
+				*(dst16 + 320) = col16; *(dst16+480) = col16;
+				traceRay(dir + RT_WIDTH + 2, perPixelVars + RT_WIDTH + 2, &hitP, y + 1); col = computeColor(dir + RT_WIDTH + 2, &hitP); col16 = (col << 8) | col;
+				*(dst16 + 321) = col16; *(dst16+481) = col16;
+			}
+			perPixelVars += 4;
+			dir += 4;
+			dst += 4;
+			hitBuff+=2;
+		}
+		perPixelVars += 3 * (RT_WIDTH + 1) + 1;
+		dir += 3 * (RT_WIDTH + 1) + 1;
+		dst += 3 * RT_WIDTH;
+		hitBuff += HIT_BUFF_WIDTH + 1;
+	}
+}
+
+static void renderObjectsSubdiv4x(Screen* buffer, int ticks)
+{
 	Vec3fp* dir = perPixelPrecs.viewDir;
 	PerPixelVars* perPixelVars = perPixelPrecs.vars;
 
 	Hit *hitBuff = hitBuffer;
-	for (int y = 0; y <= height; y+=2) {
-		for (int x = 0; x <= width; x+=2) {
+	for (int y = 0; y <= RT_HEIGHT; y+=4) {
+		for (int x = 0; x <= RT_WIDTH; x+=4) {
+			traceRay(dir, perPixelVars, hitBuff, y);
+
+			perPixelVars+=4;
+			dir += 4;
+			hitBuff+=2;
+		}
+		perPixelVars += 3 * (RT_WIDTH + 1) - 3;
+		dir += 3 * (RT_WIDTH + 1) - 3;
+		hitBuff +=  HIT_BUFF_WIDTH - 1;
+	}
+
+	renderSubdiv4x(buffer, ticks);
+}
+
+static void renderObjectsSubdiv2x(Screen* buffer, int ticks)
+{
+	Vec3fp* dir = perPixelPrecs.viewDir;
+	PerPixelVars* perPixelVars = perPixelPrecs.vars;
+
+	Hit *hitBuff = hitBuffer;
+	int i = 0;
+	for (int y = 0; y <= RT_HEIGHT; y+=2) {
+		for (int x = 0; x <= RT_WIDTH; x+=2) {
 			traceRay(dir, perPixelVars, hitBuff, y);
 
 			perPixelVars+=2;
 			dir += 2;
+			i += 2;
 			hitBuff++;
 		}
-		perPixelVars += width;
-		dir += width;
+		perPixelVars += RT_WIDTH;
+		dir += RT_WIDTH;
 	}
 
 	renderSubdiv2x(buffer, ticks);
@@ -497,5 +591,6 @@ void raytraceRun1(Screen* buffer, int ticks)
 	updateObjects(ticks);
 
 	//renderObjects(buffer, ticks);
-	renderObjectsSubdiv(buffer, ticks);
+	//renderObjectsSubdiv2x(buffer, ticks);
+	renderObjectsSubdiv4x(buffer, ticks);
 }

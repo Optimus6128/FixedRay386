@@ -14,7 +14,7 @@ enum { OBJ_NOTHING, OBJ_PLANE, OBJ_SPHERE, OBJ_TYPES_COUNT };
 void raytraceInit0(Screen *buffer);
 void raytraceRun0(Screen *buffer, int ticks);
 
-void raytraceInit1(Screen* buffer);
+void raytraceInit1();
 void raytraceRun1(Screen *buffer, int ticks);
 
 #endif

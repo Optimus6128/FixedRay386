@@ -17,7 +17,7 @@ void fxRayInit(Screen *screen)
 	makeAndSetPal(192, 255, 0, 0, 0, 15, 31, 63);
 
 	raytraceInit0(screen);
-	raytraceInit1(screen);
+	raytraceInit1();
 }
 
 void fxRayRun(Screen *screen, uint32 ticks)
