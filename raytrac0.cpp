@@ -152,28 +152,11 @@ static inline float intersectSphere(Object* obj, Vec3* dir, float dirDot)
 	if (d >= 0) {
 		d = (float)sqrt(d);
 
-		// No div by zero despite warning (a happens to be well above zero)
-		float t1 = (-b + d) / dirDot;
-		float t2 = (-b - d) / dirDot;
-
-		if (t1 <= 0 && t2 <= 0) {
-			return -1;
+		float t = (-b - d) / dirDot;
+		if (t <= 0) {
+			t = (-b + d) / dirDot;
 		}
-
-		if (t1 < t2) {
-			if (t1 > 0) {
-				return t1;
-			} else {
-				return t2;
-			}
-		}
-		else {
-			if (t2 > 0) {
-				return t2;
-			} else {
-				return t1;
-			}
-		}
+		return t;
 	}
 	return -1;
 }
