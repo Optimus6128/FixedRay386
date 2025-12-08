@@ -28,6 +28,7 @@ typedef struct Hit
 {
 	Object* obj;
 	Vec3fp pos;
+	Vec3fp normal;
 } Hit;
 
 typedef struct PerPixelVars
@@ -194,20 +195,31 @@ static inline int intersectSphere(Object* obj, Vec3fp* dir, PerPixelVars *perPix
 static void traceRay(Vec3fp *dir, PerPixelVars *perPixelVars, Hit *hit, int y)
 {
 	int t, tMin = FAR_FI;
+	Object* obj = NULL;
 
-	hit->obj = NULL;
 	//t = intersectPlane(&plane, dir);
 	t = planeYt[y];	// cheat, we don't even call intersectPlane as it's a very trivial parallel to ground plane, prestored t hit per scanline
-	if (t > 0) { tMin = t; hit->obj = &plane; }
+	if (t > 0) { tMin = t; obj = &plane; }
 
-	t = intersectSphere(&sphere[0], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[0]; }
-	t = intersectSphere(&sphere[1], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[1]; }
-	t = intersectSphere(&sphere[2], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; hit->obj = &sphere[2]; }
+	t = intersectSphere(&sphere[0], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; obj = &sphere[0]; }
+	t = intersectSphere(&sphere[1], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; obj = &sphere[1]; }
+	t = intersectSphere(&sphere[2], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; obj = &sphere[2]; }
 
-	if (tMin < FAR_FI) {
+	hit->obj = obj;
+	if (obj) {
 		hit->pos.x = FP_MUL_T(tMin, dir->x);
 		hit->pos.y = FP_MUL_T(tMin, dir->y);
 		hit->pos.z = FP_MUL_T(tMin, dir->z);
+
+		if (obj->type == OBJ_PLANE) {
+			hit->normal.x = obj->a;
+			hit->normal.y = obj->b;
+			hit->normal.z = obj->c;
+		} else {
+			hit->normal.x = -FP_MUL_T((hit->pos.x - obj->a), obj->invR);
+			hit->normal.y = -FP_MUL_T((hit->pos.y - obj->b), obj->invR);
+			hit->normal.z = -FP_MUL_T((hit->pos.z - obj->c), obj->invR);
+		}
 	}
 }
 
@@ -285,7 +297,6 @@ void raytraceInit1()
 static inline int computeColor(Vec3fp* dir, Hit* hit)
 {
 	Object* obj = hit->obj;
-	Vec3fp normal;
 	int ci = 0;
 	int u, v;
 
@@ -293,11 +304,9 @@ static inline int computeColor(Vec3fp* dir, Hit* hit)
 		switch (obj->type) {
 		case OBJ_PLANE:
 		{
-			normal.x = obj->a;
-			normal.y = obj->b;
-			normal.z = obj->c;
+			//ci = Vdot(dir, &hit->normal);
+			ci = FP_MUL_T(dir->y, hit->normal.y);	// hack for speed as plane parallel to ground happens to have Y vector up and everything else is zero.
 
-			ci = Vdot(dir, &normal);
 			CLAMP(ci, 0, ((1 << RP_BITS) - 1));
 			u = (hit->pos.x >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
 			v = ((hit->pos.z + planeTicks) >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
@@ -307,11 +316,7 @@ static inline int computeColor(Vec3fp* dir, Hit* hit)
 
 		case OBJ_SPHERE:
 		{
-			normal.x = -FP_MUL_T((hit->pos.x - obj->a), obj->invR);
-			normal.y = -FP_MUL_T((hit->pos.y - obj->b), obj->invR);
-			normal.z = -FP_MUL_T((hit->pos.z - obj->c), obj->invR);
-
-			ci = Vdot(&lightDir0, &normal) >> (RP_BITS - COL_BITS_OBJ);
+			ci = Vdot(&lightDir0, &hit->normal) >> (RP_BITS - COL_BITS_OBJ);
 			CLAMP(ci, 0, COLS_OBJ_RANGE);
 		}
 		break;
@@ -352,23 +357,19 @@ static void renderObjects(Screen* buffer, int ticks)
 	}
 }
 
-static int computeColorNothing(Vec3fp* /*dir*/, Hit* /*hit*/)
-{
-	return 0;
-}
-
-static int computeColorPlane(Vec3fp* dir, Hit* hit)
+static inline int computeColorPlane(Vec3fp* dir, Hit* hit)
 {
 	Object* obj = hit->obj;
-	Vec3fp normal;
-	int ci = 0;
 	int u, v;
 
-	normal.x = obj->a;
-	normal.y = obj->b;
-	normal.z = obj->c;
+	//Vec3fp normal;
+	//normal.x = obj->a;
+	//normal.y = obj->b;
+	//normal.z = obj->c;
 
-	ci = Vdot(dir, &normal);
+	//ci = Vdot(dir, &normal);
+	int ci = FP_MUL_T(dir->y, obj->b);	// hack for speed as plane parallel to ground happens to have Y vector up and everything else is zero.
+
 	CLAMP(ci, 0, ((1 << RP_BITS) - 1));
 	u = (hit->pos.x >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
 	v = ((hit->pos.z + planeTicks) >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
@@ -378,25 +379,14 @@ static int computeColorPlane(Vec3fp* dir, Hit* hit)
 	return ci;
 }
 
-static int computeColorSphere(Vec3fp* /*dir*/, Hit* hit)
+static inline int computeColorSphere(Vec3fp* /*dir*/, Hit* hit)
 {
-	Object* obj = hit->obj;
-	Vec3fp normal;
-	int ci = 0;
-	//int u, v;
-
-	normal.x = -FP_MUL_T((hit->pos.x - obj->a), obj->invR);
-	normal.y = -FP_MUL_T((hit->pos.y - obj->b), obj->invR);
-	normal.z = -FP_MUL_T((hit->pos.z - obj->c), obj->invR);
-
-	ci = Vdot(&lightDir0, &normal) >> (RP_BITS - COL_BITS_OBJ);
+	int ci = Vdot(&lightDir0, &hit->normal) >> (RP_BITS - COL_BITS_OBJ);
 	CLAMP(ci, 0, COLS_OBJ_RANGE);
-	ci += (obj->index << COL_BITS_OBJ);
+	ci += (hit->obj->index << COL_BITS_OBJ);
 
 	return ci;
 }
-
-static int (*computeColorObject[OBJ_TYPES_COUNT])(Vec3fp*, Hit*) = { computeColorNothing, computeColorPlane, computeColorSphere };
 
 static void renderSubdiv2x(Screen* buffer, int ticks)
 {
@@ -414,21 +404,20 @@ static void renderSubdiv2x(Screen* buffer, int ticks)
 			Hit* hitLR = &hitBuff[HIT_BUFF_WIDTH+1];
 
 			Hit hitP;
+			uint8 c = 0;
 			int objType = OBJ_NOTHING;
-
 			if (hitUL->obj) {
 				objType = hitUL->obj->type;
+				c = computeColor(dir, hitUL);
 			}
-			int (*computeColorFunc)(Vec3fp*, Hit*) = computeColorObject[objType];
-			*dst = computeColorFunc(dir, hitUL);
+			*dst = c;
 
 			hitP.obj = hitUL->obj;
 			if (hitUL->obj == hitUR->obj && hitLL->obj == hitLR->obj && hitUL->obj == hitLL->obj) {
 				if (objType == OBJ_NOTHING) {
-					*dst = 0;
-					*(dst+1) = 0;
-					*(dst + RT_WIDTH) = 0;
-					*(dst + RT_WIDTH + 1) = 0;
+					uint16* dst16 = (uint16*)dst;
+					*dst16 = 0;
+					*(dst16 + RT_WIDTH/2) = 0;
 				} else {
 					const int posULx = hitUL->pos.x;
 					const int posULy = hitUL->pos.y;
@@ -437,12 +426,31 @@ static void renderSubdiv2x(Screen* buffer, int ticks)
 					Vec3fp* posLL = &hitLL->pos;
 					Vec3fp* posLR = &hitLR->pos;
 
-					hitP.pos.x = (posULx + posUR->x) >> 1; hitP.pos.y = (posULy + posUR->y) >> 1; hitP.pos.z = (posULz + posUR->z) >> 1;
-					*(dst + 1) = computeColorFunc(dir, &hitP);
-					hitP.pos.x = (posULx + posLL->x) >> 1; hitP.pos.y = (posULy + posLL->y) >> 1; hitP.pos.z = (posULz + posLL->z) >> 1;
-					*(dst + RT_WIDTH) = computeColorFunc(dir, &hitP);
-					hitP.pos.x = (posULx + posLR->x) >> 1; hitP.pos.y = (posULy + posLR->y) >> 1; hitP.pos.z = (posULz + posLR->z) >> 1;
-					*(dst + RT_WIDTH + 1) = computeColorFunc(dir, &hitP);
+					if (objType == OBJ_PLANE) {
+						hitP.pos.x = (posULx + posUR->x) >> 1; hitP.pos.y = (posULy + posUR->y) >> 1; hitP.pos.z = (posULz + posUR->z) >> 1;
+						*(dst + 1) = computeColorPlane(dir, &hitP);
+						hitP.pos.x = (posULx + posLL->x) >> 1; hitP.pos.y = (posULy + posLL->y) >> 1; hitP.pos.z = (posULz + posLL->z) >> 1;
+						*(dst + RT_WIDTH) = computeColorPlane(dir, &hitP);
+						hitP.pos.x = (posULx + posLR->x) >> 1; hitP.pos.y = (posULy + posLR->y) >> 1; hitP.pos.z = (posULz + posLR->z) >> 1;
+						*(dst + RT_WIDTH + 1) = computeColorPlane(dir, &hitP);
+					} else {
+						const int normULx = hitUL->normal.x;
+						const int normULy = hitUL->normal.y;
+						const int normULz = hitUL->normal.z;
+						Vec3fp* normUR = &hitUR->normal;
+						Vec3fp* normLL = &hitLL->normal;
+						Vec3fp* normLR = &hitLR->normal;
+
+						hitP.pos.x = (posULx + posUR->x) >> 1; hitP.pos.y = (posULy + posUR->y) >> 1; hitP.pos.z = (posULz + posUR->z) >> 1;
+						hitP.normal.x = (normULx + normUR->x) >> 1; hitP.normal.y = (normULy + normUR->y) >> 1; hitP.normal.z = (normULz + normUR->z) >> 1;
+						*(dst + 1) = computeColorSphere(dir, &hitP);
+						hitP.pos.x = (posULx + posLL->x) >> 1; hitP.pos.y = (posULy + posLL->y) >> 1; hitP.pos.z = (posULz + posLL->z) >> 1;
+						hitP.normal.x = (normULx + normLL->x) >> 1; hitP.normal.y = (normULy + normLL->y) >> 1; hitP.normal.z = (normULz + normLL->z) >> 1;
+						*(dst + RT_WIDTH) = computeColorSphere(dir, &hitP);
+						hitP.pos.x = (posULx + posLR->x) >> 1; hitP.pos.y = (posULy + posLR->y) >> 1; hitP.pos.z = (posULz + posLR->z) >> 1;
+						hitP.normal.x = (normULx + normLR->x) >> 1; hitP.normal.y = (normULy + normLR->y) >> 1; hitP.normal.z = (normULz + normLR->z) >> 1;
+						*(dst + RT_WIDTH + 1) = computeColorSphere(dir, &hitP);
+					}
 				}
 			} else {
 				traceRay(dir + 1, perPixelVars+1, &hitP, y); *(dst + 1) = computeColor(dir, &hitP);
@@ -480,27 +488,25 @@ static void renderSubdiv4x(Screen* buffer, int ticks)
 			Hit hitP;
 			int objType = OBJ_NOTHING;
 			uint8 col;
-			uint16 col16;
+			uint16 col16 = 0;
 			uint16* dst16 = (uint16*)dst;
 
 			if (hitUL->obj) {
 				objType = hitUL->obj->type;
+				col = computeColor(dir, hitUL);
+				col16 = (col << 8) | col;
 			}
-			int (*computeColorFunc)(Vec3fp*, Hit*) = computeColorObject[objType];
-			col = computeColorFunc(dir, hitUL);
-			col16 = (col << 8) | col;
-
 			*dst16 = col16;
-			*(dst16+160) = col16;
+			*(dst16 + RT_WIDTH/2) = col16;
 
 			hitP.obj = hitUL->obj;
 			if (hitUL->obj == hitUR->obj && hitLL->obj == hitLR->obj && hitUL->obj == hitLL->obj) {
 				if (objType == OBJ_NOTHING) {
 					uint32* dst32 = (uint32*)dst;
 					*dst32 = 0;
-					*(dst32 + 80) = 0;
-					*(dst32 + 160) = 0;
-					*(dst32 + 240) = 0;
+					*(dst32 + RT_WIDTH/4) = 0;
+					*(dst32 + (2 * RT_WIDTH/4)) = 0;
+					*(dst32 + (3 * RT_WIDTH/4)) = 0;
 				} else {
 					const int posULx = hitUL->pos.x;
 					const int posULy = hitUL->pos.y;
@@ -509,17 +515,41 @@ static void renderSubdiv4x(Screen* buffer, int ticks)
 					Vec3fp* posLL = &hitLL->pos;
 					Vec3fp* posLR = &hitLR->pos;
 
-					hitP.pos.x = (posULx + posUR->x) >> 1; hitP.pos.y = (posULy + posUR->y) >> 1; hitP.pos.z = (posULz + posUR->z) >> 1;
-					col = computeColorFunc(dir, &hitP); col16 = (col << 8) | col;
-					*(dst16+1) = col16; *(dst16+161) = col16;
+					if (objType == OBJ_PLANE) {
+						hitP.pos.x = (posULx + posUR->x) >> 1; hitP.pos.y = (posULy + posUR->y) >> 1; hitP.pos.z = (posULz + posUR->z) >> 1;
+						col = computeColorPlane(dir, &hitP); col16 = (col << 8) | col;
+						*(dst16 + 1) = col16; *(dst16 + RT_WIDTH/2 + 1) = col16;
 
-					hitP.pos.x = (posULx + posLL->x) >> 1; hitP.pos.y = (posULy + posLL->y) >> 1; hitP.pos.z = (posULz + posLL->z) >> 1;
-					col = computeColorFunc(dir, &hitP); col16 = (col << 8) | col;
-					*(dst16 + 320) = col16; *(dst16+480) = col16;
+						hitP.pos.x = (posULx + posLL->x) >> 1; hitP.pos.y = (posULy + posLL->y) >> 1; hitP.pos.z = (posULz + posLL->z) >> 1;
+						col = computeColorPlane(dir, &hitP); col16 = (col << 8) | col;
+						*(dst16 + (2 * RT_WIDTH/2)) = col16; *(dst16 + (3 * RT_WIDTH/2)) = col16;
 
-					hitP.pos.x = (posULx + posLR->x) >> 1; hitP.pos.y = (posULy + posLR->y) >> 1; hitP.pos.z = (posULz + posLR->z) >> 1;
-					col = computeColorFunc(dir, &hitP); col16 = (col << 8) | col;
-					*(dst16 + 321) = col16; *(dst16+481) = col16;
+						hitP.pos.x = (posULx + posLR->x) >> 1; hitP.pos.y = (posULy + posLR->y) >> 1; hitP.pos.z = (posULz + posLR->z) >> 1;
+						col = computeColorPlane(dir, &hitP); col16 = (col << 8) | col;
+						*(dst16 + (2 * RT_WIDTH/2 + 1)) = col16; *(dst16 + (3 * RT_WIDTH/2 + 1)) = col16;
+					} else {
+						const int normULx = hitUL->normal.x;
+						const int normULy = hitUL->normal.y;
+						const int normULz = hitUL->normal.z;
+						Vec3fp* normUR = &hitUR->normal;
+						Vec3fp* normLL = &hitLL->normal;
+						Vec3fp* normLR = &hitLR->normal;
+
+						hitP.pos.x = (posULx + posUR->x) >> 1; hitP.pos.y = (posULy + posUR->y) >> 1; hitP.pos.z = (posULz + posUR->z) >> 1;
+						hitP.normal.x = (normULx + normUR->x) >> 1; hitP.normal.y = (normULy + normUR->y) >> 1; hitP.normal.z = (normULz + normUR->z) >> 1;
+						col = computeColorSphere(dir, &hitP); col16 = (col << 8) | col;
+						*(dst16 + 1) = col16; *(dst16 + RT_WIDTH/2 + 1) = col16;
+
+						hitP.pos.x = (posULx + posLL->x) >> 1; hitP.pos.y = (posULy + posLL->y) >> 1; hitP.pos.z = (posULz + posLL->z) >> 1;
+						hitP.normal.x = (normULx + normLL->x) >> 1; hitP.normal.y = (normULy + normLL->y) >> 1; hitP.normal.z = (normULz + normLL->z) >> 1;
+						col = computeColorSphere(dir, &hitP); col16 = (col << 8) | col;
+						*(dst16 + (2 * RT_WIDTH/2)) = col16; *(dst16 + (3 * RT_WIDTH/2)) = col16;
+
+						hitP.pos.x = (posULx + posLR->x) >> 1; hitP.pos.y = (posULy + posLR->y) >> 1; hitP.pos.z = (posULz + posLR->z) >> 1;
+						hitP.normal.x = (normULx + normLR->x) >> 1; hitP.normal.y = (normULy + normLR->y) >> 1; hitP.normal.z = (normULz + normLR->z) >> 1;
+						col = computeColorSphere(dir, &hitP); col16 = (col << 8) | col;
+						*(dst16 + (2 * RT_WIDTH/2 + 1)) = col16; *(dst16 + (3 * RT_WIDTH/2 + 1)) = col16;
+					}
 				}
 			} else {
 				traceRay(dir + 1, perPixelVars+1, &hitP, y); col = computeColor(dir, &hitP); col16 = (col << 8) | col;
