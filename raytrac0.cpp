@@ -257,7 +257,7 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 
 				ci = (int)(Vdot(dir, &normal) * (1 << COL_BITS));
 				CLAMP(ci, 0, COLS_RANGE);
-				ci = ((((int)(hit->pos.x * 16) & 15) ^ ((int)((hit->pos.z + zOff) * 16) & 15)) * ci) >> COL_BITS_OBJ;
+				ci = ((((int)((hit->pos.x + 0.5f) * 16) & 15) ^ ((int)((hit->pos.z + 0.5f + zOff) * 16) & 15)) * ci) >> COL_BITS_OBJ;
 			}
 			break;
 
