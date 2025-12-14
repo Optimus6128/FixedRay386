@@ -633,6 +633,14 @@ static void renderSubdiv2x(Screen* buffer)
 	}
 }
 
+/*
+A * 0 * B
+* * * * _
+1 * 2 * _
+* * * * _
+C _ _ _ D
+*/
+
 static void renderSubdiv4x(Screen* buffer)
 {
 	uint8* dst = (uint8*)buffer->data;
@@ -648,9 +656,7 @@ static void renderSubdiv4x(Screen* buffer)
 			Hit* hit2_0 = &hitBuff[0 * HIT_BUFF_WIDTH + 2];
 			Hit* hit0_1 = &hitBuff[1 * HIT_BUFF_WIDTH + 0];
 			Hit* hit1_1 = &hitBuff[1 * HIT_BUFF_WIDTH + 1];
-			Hit* hit2_1 = &hitBuff[1 * HIT_BUFF_WIDTH + 2];
 			Hit* hit0_2 = &hitBuff[2 * HIT_BUFF_WIDTH + 0];
-			Hit* hit1_2 = &hitBuff[2 * HIT_BUFF_WIDTH + 1];
 			Hit* hit2_2 = &hitBuff[2 * HIT_BUFF_WIDTH + 2];
 
 			Hit hitP;
@@ -687,13 +693,13 @@ static void renderSubdiv4x(Screen* buffer)
 						hit1_1->obj = hitP.obj;
 						*(dst + 2 * RT_WIDTH + 2) = computeColorPlane(dir + 2 * RT_BUFF_WIDTH + 2, hit1_1);
 
-						hit2_1->pos.x = (pos2_0->x + pos2_2->x) >> 1; hit2_1->pos.y = (pos2_0->y + pos2_2->y) >> 1; hit2_1->pos.z = (pos2_0->z + pos2_2->z) >> 1;
-						hit2_1->obj = hitP.obj;
-						*(dst + 2 * RT_WIDTH + 4) = computeColorPlane(dir + 2 * RT_BUFF_WIDTH + 4, hit2_1);
+						//hit2_1->pos.x = (pos2_0->x + pos2_2->x) >> 1; hit2_1->pos.y = (pos2_0->y + pos2_2->y) >> 1; hit2_1->pos.z = (pos2_0->z + pos2_2->z) >> 1;
+						//hit2_1->obj = hitP.obj;
+						//*(dst + 2 * RT_WIDTH + 4) = computeColorPlane(dir + 2 * RT_BUFF_WIDTH + 4, hit2_1);
 
-						hit1_2->pos.x = (pos0_2->x + pos2_2->x) >> 1; hit1_2->pos.y = (pos0_2->y + pos2_2->y) >> 1; hit1_2->pos.z = (pos0_2->z + pos2_2->z) >> 1;
-						hit1_2->obj = hitP.obj;
-						*(dst + 4 * RT_WIDTH + 2) = computeColorPlane(dir + 4 * RT_BUFF_WIDTH + 2, hit1_2);
+						//hit1_2->pos.x = (pos0_2->x + pos2_2->x) >> 1; hit1_2->pos.y = (pos0_2->y + pos2_2->y) >> 1; hit1_2->pos.z = (pos0_2->z + pos2_2->z) >> 1;
+						//hit1_2->obj = hitP.obj;
+						//*(dst + 4 * RT_WIDTH + 2) = computeColorPlane(dir + 4 * RT_BUFF_WIDTH + 2, hit1_2);
 					}
 					else {
 						Vec3fp* norm0_0 = &hit0_0->normal;
@@ -716,19 +722,22 @@ static void renderSubdiv4x(Screen* buffer)
 						hit1_1->obj = hitP.obj;
 						*(dst + 2 * RT_WIDTH + 2) = computeColorSphere(hit1_1);
 
-						hit2_1->pos.x = (pos2_0->x + pos2_2->x) >> 1; hit2_1->pos.y = (pos2_0->y + pos2_2->y) >> 1; hit2_1->pos.z = (pos2_0->z + pos2_2->z) >> 1;
-						hit2_1->normal.x = (norm2_0->x + norm2_2->x) >> 1; hit2_1->normal.y = (norm2_0->y + norm2_2->y) >> 1; hit2_1->normal.z = (norm2_0->z + norm2_2->z) >> 1;
-						hit2_1->obj = hitP.obj;
-						*(dst + 2 * RT_WIDTH + 4) = computeColorSphere(hit2_1);
+						//hit2_1->pos.x = (pos2_0->x + pos2_2->x) >> 1; hit2_1->pos.y = (pos2_0->y + pos2_2->y) >> 1; hit2_1->pos.z = (pos2_0->z + pos2_2->z) >> 1;
+						//hit2_1->normal.x = (norm2_0->x + norm2_2->x) >> 1; hit2_1->normal.y = (norm2_0->y + norm2_2->y) >> 1; hit2_1->normal.z = (norm2_0->z + norm2_2->z) >> 1;
+						//hit2_1->obj = hitP.obj;
+						//*(dst + 2 * RT_WIDTH + 4) = computeColorSphere(hit2_1);
 
-						hit1_2->pos.x = (pos0_2->x + pos2_2->x) >> 1; hit1_2->pos.y = (pos0_2->y + pos2_2->y) >> 1; hit1_2->pos.z = (pos0_2->z + pos2_2->z) >> 1;
-						hit1_2->normal.x = (norm0_2->x + norm2_2->x) >> 1; hit1_2->normal.y = (norm0_2->y + norm2_2->y) >> 1; hit1_2->normal.z = (norm0_2->z + norm2_2->z) >> 1;
-						hit1_2->obj = hitP.obj;
-						*(dst + 4 * RT_WIDTH + 2) = computeColorSphere(hit1_2);
+						//hit1_2->pos.x = (pos0_2->x + pos2_2->x) >> 1; hit1_2->pos.y = (pos0_2->y + pos2_2->y) >> 1; hit1_2->pos.z = (pos0_2->z + pos2_2->z) >> 1;
+						//hit1_2->normal.x = (norm0_2->x + norm2_2->x) >> 1; hit1_2->normal.y = (norm0_2->y + norm2_2->y) >> 1; hit1_2->normal.z = (norm0_2->z + norm2_2->z) >> 1;
+						//hit1_2->obj = hitP.obj;
+						//*(dst + 4 * RT_WIDTH + 2) = computeColorSphere(hit1_2);
 					}
 				}
 			}
 			else {
+				Hit* hit2_1 = &hitBuff[1 * HIT_BUFF_WIDTH + 2];
+				Hit* hit1_2 = &hitBuff[2 * HIT_BUFF_WIDTH + 1];
+
 				if (!hit1_0->obj) traceRay(dir + 2, perPixelVars + 2, hit1_0, y);
 				if (!hit0_1->obj) traceRay(dir + 2 * RT_BUFF_WIDTH, perPixelVars + 2 * RT_BUFF_WIDTH, hit0_1, y + 2);
 				if (!hit1_2->obj) traceRay(dir + 4 * RT_BUFF_WIDTH + 2, perPixelVars + 4 * RT_BUFF_WIDTH + 2, hit1_2, y + 4);
