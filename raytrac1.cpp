@@ -283,21 +283,19 @@ static void updateObjects(int ticks)
 
 static void outputGeneratedSubdivCross(FILE* f, int range, bool isSphere)
 {
-	for (int y = 0; y <= range; ++y) {
-		for (int x = 0; x <= range; ++x) {
-			bool xNotAtEdges = x > 0 && x < range;
-			bool yNotAtEdges = y > 0 && y < range;
-			if (xNotAtEdges || yNotAtEdges) {
+	for (int y = 0; y < range; ++y) {
+		for (int x = 0; x < range; ++x) {
+			if (x>0 || y>0) {
 				int x0 = x;
 				int y0 = y;
 				int x1 = x;
 				int y1 = y;
 
-				if (xNotAtEdges) {
+				if (x>0) {
 					x0 = x - 1;
 					x1 = x + 1;
 				}
-				if (yNotAtEdges) {
+				if (y>0) {
 					y0 = y - 1;
 					y1 = y + 1;
 				}
@@ -309,7 +307,8 @@ static void outputGeneratedSubdivCross(FILE* f, int range, bool isSphere)
 				fprintf(f, "\t\t\t\t\t\thit%d_%d->obj = hitP.obj;\n", x, y);
 				if (isSphere) {
 					fprintf(f, "\t\t\t\t\t\t*(dst + %d * RT_WIDTH + %d) = computeColorSphere(hit%d_%d);\n", 2 * y, 2 * x, x, y);
-				} else {
+				}
+				else {
 					fprintf(f, "\t\t\t\t\t\t*(dst + %d * RT_WIDTH + %d) = computeColorPlane(dir + %d * RT_BUFF_WIDTH + %d, hit%d_%d);\n", 2 * y, 2 * x, 2 * y, 2 * x, x, y);
 				}
 				if (y != range) fprintf(f, "\n");
@@ -339,7 +338,9 @@ static void outputGeneratedSubdiv(int subDiv)
 
 	for (int y = 0; y <= range; ++y) {
 		for (int x = 0; x <= range; ++x) {
-			fprintf(f, "\t\t\tHit* hit%d_%d = &hitBuff[%d*HIT_BUFF_WIDTH + %d];\n", x, y, y, x);
+			if (!(x == range && y == range / 2) && !(x == range / 2 && y == range)) {
+				fprintf(f, "\t\t\tHit* hit%d_%d = &hitBuff[%d*HIT_BUFF_WIDTH + %d];\n", x, y, y, x);
+			}
 		}
 	}
 	fprintf(f, "\n");
@@ -404,6 +405,9 @@ static void outputGeneratedSubdiv(int subDiv)
 	fprintf(f, "\t\t\t\t\t}\n");
 	fprintf(f, "\t\t\t\t}\n");
 	fprintf(f, "\t\t\t} else {\n");
+
+	fprintf(f, "\t\t\t\tHit* hit%d_%d = &hitBuff[%d*HIT_BUFF_WIDTH + %d];\n", range, range / 2, range / 2, range);
+	fprintf(f, "\t\t\t\tHit* hit%d_%d = &hitBuff[%d*HIT_BUFF_WIDTH + %d];\n\n", range / 2, range, range, range / 2);
 
 	fprintf(f, "\t\t\t\tif (!hit1_0->obj) traceRay(dir + %d, perPixelVars + %d, hit1_0, y);\n", range, range);
 	fprintf(f, "\t\t\t\tif (!hit0_1->obj) traceRay(dir + %d * RT_BUFF_WIDTH, perPixelVars + %d * RT_BUFF_WIDTH, hit0_1, y + %d);\n", range, range, range);
@@ -692,14 +696,6 @@ static void renderSubdiv4x(Screen* buffer)
 						hit1_1->pos.x = (pos0_0->x + pos2_2->x) >> 1; hit1_1->pos.y = (pos0_0->y + pos2_2->y) >> 1; hit1_1->pos.z = (pos0_0->z + pos2_2->z) >> 1;
 						hit1_1->obj = hitP.obj;
 						*(dst + 2 * RT_WIDTH + 2) = computeColorPlane(dir + 2 * RT_BUFF_WIDTH + 2, hit1_1);
-
-						//hit2_1->pos.x = (pos2_0->x + pos2_2->x) >> 1; hit2_1->pos.y = (pos2_0->y + pos2_2->y) >> 1; hit2_1->pos.z = (pos2_0->z + pos2_2->z) >> 1;
-						//hit2_1->obj = hitP.obj;
-						//*(dst + 2 * RT_WIDTH + 4) = computeColorPlane(dir + 2 * RT_BUFF_WIDTH + 4, hit2_1);
-
-						//hit1_2->pos.x = (pos0_2->x + pos2_2->x) >> 1; hit1_2->pos.y = (pos0_2->y + pos2_2->y) >> 1; hit1_2->pos.z = (pos0_2->z + pos2_2->z) >> 1;
-						//hit1_2->obj = hitP.obj;
-						//*(dst + 4 * RT_WIDTH + 2) = computeColorPlane(dir + 4 * RT_BUFF_WIDTH + 2, hit1_2);
 					}
 					else {
 						Vec3fp* norm0_0 = &hit0_0->normal;
@@ -722,15 +718,6 @@ static void renderSubdiv4x(Screen* buffer)
 						hit1_1->obj = hitP.obj;
 						*(dst + 2 * RT_WIDTH + 2) = computeColorSphere(hit1_1);
 
-						//hit2_1->pos.x = (pos2_0->x + pos2_2->x) >> 1; hit2_1->pos.y = (pos2_0->y + pos2_2->y) >> 1; hit2_1->pos.z = (pos2_0->z + pos2_2->z) >> 1;
-						//hit2_1->normal.x = (norm2_0->x + norm2_2->x) >> 1; hit2_1->normal.y = (norm2_0->y + norm2_2->y) >> 1; hit2_1->normal.z = (norm2_0->z + norm2_2->z) >> 1;
-						//hit2_1->obj = hitP.obj;
-						//*(dst + 2 * RT_WIDTH + 4) = computeColorSphere(hit2_1);
-
-						//hit1_2->pos.x = (pos0_2->x + pos2_2->x) >> 1; hit1_2->pos.y = (pos0_2->y + pos2_2->y) >> 1; hit1_2->pos.z = (pos0_2->z + pos2_2->z) >> 1;
-						//hit1_2->normal.x = (norm0_2->x + norm2_2->x) >> 1; hit1_2->normal.y = (norm0_2->y + norm2_2->y) >> 1; hit1_2->normal.z = (norm0_2->z + norm2_2->z) >> 1;
-						//hit1_2->obj = hitP.obj;
-						//*(dst + 4 * RT_WIDTH + 2) = computeColorSphere(hit1_2);
 					}
 				}
 			}
