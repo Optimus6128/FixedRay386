@@ -343,82 +343,61 @@ static void outputGeneratedSubdivCross(FILE* f, int range, bool isSphere)
 						fprintf(f, "\t\t\t\t\t\t*(dst + %d * RT_WIDTH + %d) = computeColorPlane(dir + %d * RT_BUFF_WIDTH + %d, hit%d_%d);\n", 2 * y, 2 * x, 2 * y, 2 * x, x, y);
 					}
 				}
-
-				if (y != range) fprintf(f, "\n");
+				fprintf(f, "\n");
 			}
 		}
 	}
 }
-/*
+
 static void outputGeneratedSubdivCrossRest(FILE* f, int subDiv, bool isSphere)
 {
 	// A * 0 * B
 	// * + * + _
-	// 1 * 2 . _
-	// * + . + _
-	// C _ _ _ D
+	// 1 * 2 * E
+	// * + * + _
+	// C _ F _ D
 
-	static char plan4x4[5][5] = {	0, 1, 0, 1, 0,
-									2, 3, 2, 4, 0,
-									0, 1, 0, 6, 0,
-									2, 4, 5, 3, 0,
-									0, 0, 0, 0, 0 };
+	static char plan4x4[4][4] = {	0, 1, 0, 1,
+									2, 3, 2, 3,
+									0, 1, 0, 1,
+									2, 3, 2, 3};
 
 	for (int y = 0; y < subDiv; ++y) {
 		for (int x = 0; x < subDiv; ++x) {
 			char p = plan4x4[y][x];
 
-			int x0 = x;
-			int y0 = y;
-			int x1 = x;
-			int y1 = y;
+			if (p != 0) {
+				int x0 = x;
+				int y0 = y;
+				int x1 = x;
+				int y1 = y;
 
-			switch (p)
-			{
-				case 1:
-					break;
-
-				case 2:
-					break;
-
-				case 3:
-					break;
-
-				case 4:
-					break;
-
-				case 5:
-					break;
-
-				case 6:
-					break;
-			}
-				if (x>0) {
-					x0 = x - 1;
-					x1 = x + 1;
+				if (p & 1) {
+					x0--; x1++;
 				}
-				if (y>0) {
-					y0 = y - 1;
-					y1 = y + 1;
+				if (p & 2) {
+					y0--; y1++;
 				}
 
-				fprintf(f, "\t\t\t\t\t\thit%d_%d->pos.x = (pos%d_%d->x + pos%d_%d->x) >> 1; hit%d_%d->pos.y = (pos%d_%d->y + pos%d_%d->y) >> 1; hit%d_%d->pos.z = (pos%d_%d->z + pos%d_%d->z) >> 1;\n", x, y, x0, y0, x1, y1, x, y, x0, y0, x1, y1, x, y, x0, y0, x1, y1);
+				x0 >>= 1; x1 >>= 1;
+				y0 >>= 1; y1 >>= 1;
+
+				fprintf(f, "\t\t\t\t\t\thitP.pos.x = (hit%d_%d->pos.x + hit%d_%d->pos.x) >> 1; hitP.pos.y = (hit%d_%d->pos.y + hit%d_%d->pos.y) >> 1; hitP.pos.z = (hit%d_%d->pos.z + hit%d_%d->pos.z) >> 1;\n", x0, y0, x1, y1, x0, y0, x1, y1, x0, y0, x1, y1);
 				if (isSphere) {
-					fprintf(f, "\t\t\t\t\t\thit%d_%d->normal.x = (norm%d_%d->x + norm%d_%d->x) >> 1; hit%d_%d->normal.y = (norm%d_%d->y + norm%d_%d->y) >> 1; hit%d_%d->normal.z = (norm%d_%d->z + norm%d_%d->z) >> 1;\n", x, y, x0, y0, x1, y1, x, y, x0, y0, x1, y1, x, y, x0, y0, x1, y1);
+					fprintf(f, "\t\t\t\t\t\thitP.normal.x = (hit%d_%d->normal.x + hit%d_%d->normal.x) >> 1; hitP.normal.y = (hit%d_%d->normal.y + hit%d_%d->normal.y) >> 1; hitP.normal.z = (hit%d_%d->normal.z + hit%d_%d->normal.z) >> 1;\n", x0, y0, x1, y1, x0, y0, x1, y1, x0, y0, x1, y1);
 				}
-				fprintf(f, "\t\t\t\t\t\thit%d_%d->obj = hitP.obj;\n", x, y);
 				if (isSphere) {
-					fprintf(f, "\t\t\t\t\t\t*(dst + %d * RT_WIDTH + %d) = computeColorSphere(hit%d_%d);\n", 2 * y, 2 * x, x, y);
+					fprintf(f, "\t\t\t\t\t\t*(dst + %d * RT_WIDTH + %d) = computeColorSphere(&hitP);\n", y, x);
 				}
 				else {
-					fprintf(f, "\t\t\t\t\t\t*(dst + %d * RT_WIDTH + %d) = computeColorPlane(dir + %d * RT_BUFF_WIDTH + %d, hit%d_%d);\n", 2 * y, 2 * x, 2 * y, 2 * x, x, y);
+					fprintf(f, "\t\t\t\t\t\t*(dst + %d * RT_WIDTH + %d) = computeColorPlane(dir + %d * RT_BUFF_WIDTH + %d, &hitP);\n", y, x, y, x);
 				}
-				if (y != range) fprintf(f, "\n");
+				fprintf(f, "\n");
 			}
 		}
 	}
 }
-*/
+
 
 static void outputGeneratedSubdiv(int subDiv)
 {
@@ -493,6 +472,7 @@ static void outputGeneratedSubdiv(int subDiv)
 	fprintf(f, "\t\t\t\t\tif (objType == OBJ_PLANE) {\n");
 
 	outputGeneratedSubdivCross(f, range, false);
+	outputGeneratedSubdivCrossRest(f, subDiv, false);
 
 	fprintf(f,"\t\t\t\t\t} else {\n");
 	for (int y = 0; y <= range; y += range) {
@@ -503,6 +483,8 @@ static void outputGeneratedSubdiv(int subDiv)
 	fprintf(f, "\n");
 
 	outputGeneratedSubdivCross(f, range, true);
+	outputGeneratedSubdivCrossRest(f, subDiv, true);
+
 	fprintf(f, "\t\t\t\t\t}\n");
 	fprintf(f, "\t\t\t\t}\n");
 	fprintf(f, "\t\t\t} else {\n");
@@ -797,6 +779,42 @@ static void renderSubdiv4x(Screen* buffer)
 
 						hit1_2->pos.x = (pos0_2->x + pos2_2->x) >> 1; hit1_2->pos.y = (pos0_2->y + pos2_2->y) >> 1; hit1_2->pos.z = (pos0_2->z + pos2_2->z) >> 1;
 						hit1_2->obj = hitP.obj;
+
+						hitP.pos.x = (hit0_0->pos.x + hit1_0->pos.x) >> 1; hitP.pos.y = (hit0_0->pos.y + hit1_0->pos.y) >> 1; hitP.pos.z = (hit0_0->pos.z + hit1_0->pos.z) >> 1;
+						*(dst + 0 * RT_WIDTH + 1) = computeColorPlane(dir + 0 * RT_BUFF_WIDTH + 1, &hitP);
+
+						hitP.pos.x = (hit1_0->pos.x + hit2_0->pos.x) >> 1; hitP.pos.y = (hit1_0->pos.y + hit2_0->pos.y) >> 1; hitP.pos.z = (hit1_0->pos.z + hit2_0->pos.z) >> 1;
+						*(dst + 0 * RT_WIDTH + 3) = computeColorPlane(dir + 0 * RT_BUFF_WIDTH + 3, &hitP);
+
+						hitP.pos.x = (hit0_0->pos.x + hit0_1->pos.x) >> 1; hitP.pos.y = (hit0_0->pos.y + hit0_1->pos.y) >> 1; hitP.pos.z = (hit0_0->pos.z + hit0_1->pos.z) >> 1;
+						*(dst + 1 * RT_WIDTH + 0) = computeColorPlane(dir + 1 * RT_BUFF_WIDTH + 0, &hitP);
+
+						hitP.pos.x = (hit0_0->pos.x + hit1_1->pos.x) >> 1; hitP.pos.y = (hit0_0->pos.y + hit1_1->pos.y) >> 1; hitP.pos.z = (hit0_0->pos.z + hit1_1->pos.z) >> 1;
+						*(dst + 1 * RT_WIDTH + 1) = computeColorPlane(dir + 1 * RT_BUFF_WIDTH + 1, &hitP);
+
+						hitP.pos.x = (hit1_0->pos.x + hit1_1->pos.x) >> 1; hitP.pos.y = (hit1_0->pos.y + hit1_1->pos.y) >> 1; hitP.pos.z = (hit1_0->pos.z + hit1_1->pos.z) >> 1;
+						*(dst + 1 * RT_WIDTH + 2) = computeColorPlane(dir + 1 * RT_BUFF_WIDTH + 2, &hitP);
+
+						hitP.pos.x = (hit1_0->pos.x + hit2_1->pos.x) >> 1; hitP.pos.y = (hit1_0->pos.y + hit2_1->pos.y) >> 1; hitP.pos.z = (hit1_0->pos.z + hit2_1->pos.z) >> 1;
+						*(dst + 1 * RT_WIDTH + 3) = computeColorPlane(dir + 1 * RT_BUFF_WIDTH + 3, &hitP);
+
+						hitP.pos.x = (hit0_1->pos.x + hit1_1->pos.x) >> 1; hitP.pos.y = (hit0_1->pos.y + hit1_1->pos.y) >> 1; hitP.pos.z = (hit0_1->pos.z + hit1_1->pos.z) >> 1;
+						*(dst + 2 * RT_WIDTH + 1) = computeColorPlane(dir + 2 * RT_BUFF_WIDTH + 1, &hitP);
+
+						hitP.pos.x = (hit1_1->pos.x + hit2_1->pos.x) >> 1; hitP.pos.y = (hit1_1->pos.y + hit2_1->pos.y) >> 1; hitP.pos.z = (hit1_1->pos.z + hit2_1->pos.z) >> 1;
+						*(dst + 2 * RT_WIDTH + 3) = computeColorPlane(dir + 2 * RT_BUFF_WIDTH + 3, &hitP);
+
+						hitP.pos.x = (hit0_1->pos.x + hit0_2->pos.x) >> 1; hitP.pos.y = (hit0_1->pos.y + hit0_2->pos.y) >> 1; hitP.pos.z = (hit0_1->pos.z + hit0_2->pos.z) >> 1;
+						*(dst + 3 * RT_WIDTH + 0) = computeColorPlane(dir + 3 * RT_BUFF_WIDTH + 0, &hitP);
+
+						hitP.pos.x = (hit0_1->pos.x + hit1_2->pos.x) >> 1; hitP.pos.y = (hit0_1->pos.y + hit1_2->pos.y) >> 1; hitP.pos.z = (hit0_1->pos.z + hit1_2->pos.z) >> 1;
+						*(dst + 3 * RT_WIDTH + 1) = computeColorPlane(dir + 3 * RT_BUFF_WIDTH + 1, &hitP);
+
+						hitP.pos.x = (hit1_1->pos.x + hit1_2->pos.x) >> 1; hitP.pos.y = (hit1_1->pos.y + hit1_2->pos.y) >> 1; hitP.pos.z = (hit1_1->pos.z + hit1_2->pos.z) >> 1;
+						*(dst + 3 * RT_WIDTH + 2) = computeColorPlane(dir + 3 * RT_BUFF_WIDTH + 2, &hitP);
+
+						hitP.pos.x = (hit1_1->pos.x + hit2_2->pos.x) >> 1; hitP.pos.y = (hit1_1->pos.y + hit2_2->pos.y) >> 1; hitP.pos.z = (hit1_1->pos.z + hit2_2->pos.z) >> 1;
+						*(dst + 3 * RT_WIDTH + 3) = computeColorPlane(dir + 3 * RT_BUFF_WIDTH + 3, &hitP);
 					} else {
 						Vec3fp* norm0_0 = &hit0_0->normal;
 						Vec3fp* norm2_0 = &hit2_0->normal;
@@ -829,6 +847,54 @@ static void renderSubdiv4x(Screen* buffer)
 						hit1_2->pos.x = (pos0_2->x + pos2_2->x) >> 1; hit1_2->pos.y = (pos0_2->y + pos2_2->y) >> 1; hit1_2->pos.z = (pos0_2->z + pos2_2->z) >> 1;
 						hit1_2->normal.x = (norm0_2->x + norm2_2->x) >> 1; hit1_2->normal.y = (norm0_2->y + norm2_2->y) >> 1; hit1_2->normal.z = (norm0_2->z + norm2_2->z) >> 1;
 						hit1_2->obj = hitP.obj;
+
+						hitP.pos.x = (hit0_0->pos.x + hit1_0->pos.x) >> 1; hitP.pos.y = (hit0_0->pos.y + hit1_0->pos.y) >> 1; hitP.pos.z = (hit0_0->pos.z + hit1_0->pos.z) >> 1;
+						hitP.normal.x = (hit0_0->normal.x + hit1_0->normal.x) >> 1; hitP.normal.y = (hit0_0->normal.y + hit1_0->normal.y) >> 1; hitP.normal.z = (hit0_0->normal.z + hit1_0->normal.z) >> 1;
+						*(dst + 0 * RT_WIDTH + 1) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit1_0->pos.x + hit2_0->pos.x) >> 1; hitP.pos.y = (hit1_0->pos.y + hit2_0->pos.y) >> 1; hitP.pos.z = (hit1_0->pos.z + hit2_0->pos.z) >> 1;
+						hitP.normal.x = (hit1_0->normal.x + hit2_0->normal.x) >> 1; hitP.normal.y = (hit1_0->normal.y + hit2_0->normal.y) >> 1; hitP.normal.z = (hit1_0->normal.z + hit2_0->normal.z) >> 1;
+						*(dst + 0 * RT_WIDTH + 3) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit0_0->pos.x + hit0_1->pos.x) >> 1; hitP.pos.y = (hit0_0->pos.y + hit0_1->pos.y) >> 1; hitP.pos.z = (hit0_0->pos.z + hit0_1->pos.z) >> 1;
+						hitP.normal.x = (hit0_0->normal.x + hit0_1->normal.x) >> 1; hitP.normal.y = (hit0_0->normal.y + hit0_1->normal.y) >> 1; hitP.normal.z = (hit0_0->normal.z + hit0_1->normal.z) >> 1;
+						*(dst + 1 * RT_WIDTH + 0) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit0_0->pos.x + hit1_1->pos.x) >> 1; hitP.pos.y = (hit0_0->pos.y + hit1_1->pos.y) >> 1; hitP.pos.z = (hit0_0->pos.z + hit1_1->pos.z) >> 1;
+						hitP.normal.x = (hit0_0->normal.x + hit1_1->normal.x) >> 1; hitP.normal.y = (hit0_0->normal.y + hit1_1->normal.y) >> 1; hitP.normal.z = (hit0_0->normal.z + hit1_1->normal.z) >> 1;
+						*(dst + 1 * RT_WIDTH + 1) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit1_0->pos.x + hit1_1->pos.x) >> 1; hitP.pos.y = (hit1_0->pos.y + hit1_1->pos.y) >> 1; hitP.pos.z = (hit1_0->pos.z + hit1_1->pos.z) >> 1;
+						hitP.normal.x = (hit1_0->normal.x + hit1_1->normal.x) >> 1; hitP.normal.y = (hit1_0->normal.y + hit1_1->normal.y) >> 1; hitP.normal.z = (hit1_0->normal.z + hit1_1->normal.z) >> 1;
+						*(dst + 1 * RT_WIDTH + 2) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit1_0->pos.x + hit2_1->pos.x) >> 1; hitP.pos.y = (hit1_0->pos.y + hit2_1->pos.y) >> 1; hitP.pos.z = (hit1_0->pos.z + hit2_1->pos.z) >> 1;
+						hitP.normal.x = (hit1_0->normal.x + hit2_1->normal.x) >> 1; hitP.normal.y = (hit1_0->normal.y + hit2_1->normal.y) >> 1; hitP.normal.z = (hit1_0->normal.z + hit2_1->normal.z) >> 1;
+						*(dst + 1 * RT_WIDTH + 3) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit0_1->pos.x + hit1_1->pos.x) >> 1; hitP.pos.y = (hit0_1->pos.y + hit1_1->pos.y) >> 1; hitP.pos.z = (hit0_1->pos.z + hit1_1->pos.z) >> 1;
+						hitP.normal.x = (hit0_1->normal.x + hit1_1->normal.x) >> 1; hitP.normal.y = (hit0_1->normal.y + hit1_1->normal.y) >> 1; hitP.normal.z = (hit0_1->normal.z + hit1_1->normal.z) >> 1;
+						*(dst + 2 * RT_WIDTH + 1) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit1_1->pos.x + hit2_1->pos.x) >> 1; hitP.pos.y = (hit1_1->pos.y + hit2_1->pos.y) >> 1; hitP.pos.z = (hit1_1->pos.z + hit2_1->pos.z) >> 1;
+						hitP.normal.x = (hit1_1->normal.x + hit2_1->normal.x) >> 1; hitP.normal.y = (hit1_1->normal.y + hit2_1->normal.y) >> 1; hitP.normal.z = (hit1_1->normal.z + hit2_1->normal.z) >> 1;
+						*(dst + 2 * RT_WIDTH + 3) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit0_1->pos.x + hit0_2->pos.x) >> 1; hitP.pos.y = (hit0_1->pos.y + hit0_2->pos.y) >> 1; hitP.pos.z = (hit0_1->pos.z + hit0_2->pos.z) >> 1;
+						hitP.normal.x = (hit0_1->normal.x + hit0_2->normal.x) >> 1; hitP.normal.y = (hit0_1->normal.y + hit0_2->normal.y) >> 1; hitP.normal.z = (hit0_1->normal.z + hit0_2->normal.z) >> 1;
+						*(dst + 3 * RT_WIDTH + 0) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit0_1->pos.x + hit1_2->pos.x) >> 1; hitP.pos.y = (hit0_1->pos.y + hit1_2->pos.y) >> 1; hitP.pos.z = (hit0_1->pos.z + hit1_2->pos.z) >> 1;
+						hitP.normal.x = (hit0_1->normal.x + hit1_2->normal.x) >> 1; hitP.normal.y = (hit0_1->normal.y + hit1_2->normal.y) >> 1; hitP.normal.z = (hit0_1->normal.z + hit1_2->normal.z) >> 1;
+						*(dst + 3 * RT_WIDTH + 1) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit1_1->pos.x + hit1_2->pos.x) >> 1; hitP.pos.y = (hit1_1->pos.y + hit1_2->pos.y) >> 1; hitP.pos.z = (hit1_1->pos.z + hit1_2->pos.z) >> 1;
+						hitP.normal.x = (hit1_1->normal.x + hit1_2->normal.x) >> 1; hitP.normal.y = (hit1_1->normal.y + hit1_2->normal.y) >> 1; hitP.normal.z = (hit1_1->normal.z + hit1_2->normal.z) >> 1;
+						*(dst + 3 * RT_WIDTH + 2) = computeColorSphere(&hitP);
+
+						hitP.pos.x = (hit1_1->pos.x + hit2_2->pos.x) >> 1; hitP.pos.y = (hit1_1->pos.y + hit2_2->pos.y) >> 1; hitP.pos.z = (hit1_1->pos.z + hit2_2->pos.z) >> 1;
+						hitP.normal.x = (hit1_1->normal.x + hit2_2->normal.x) >> 1; hitP.normal.y = (hit1_1->normal.y + hit2_2->normal.y) >> 1; hitP.normal.z = (hit1_1->normal.z + hit2_2->normal.z) >> 1;
+						*(dst + 3 * RT_WIDTH + 3) = computeColorSphere(&hitP);
 					}
 				}
 			} else {
