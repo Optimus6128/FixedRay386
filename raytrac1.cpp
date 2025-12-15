@@ -201,30 +201,36 @@ static void traceRay(Vec3fp *dir, PerPixelVars *perPixelVars, Hit *hit, int y)
 	int t, tMin = FAR_FI;
 	Object* obj = &nothing;
 
-	//t = intersectPlane(&plane, dir);
-	t = planeYt[y];	// cheat, we don't even call intersectPlane as it's a very trivial parallel to ground plane, prestored t hit per scanline
-	if (t > 0) { tMin = t; obj = &plane; }
-
 	t = intersectSphere(&sphere[0], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; obj = &sphere[0]; }
 	t = intersectSphere(&sphere[1], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; obj = &sphere[1]; }
 	t = intersectSphere(&sphere[2], dir, perPixelVars); if (t > 0 && t < tMin) { tMin = t; obj = &sphere[2]; }
 
-	hit->obj = obj;
-	if (obj) {
+	if (tMin < FAR_FI) {
 		hit->pos.x = FP_MUL_T(tMin, dir->x);
 		hit->pos.y = FP_MUL_T(tMin, dir->y);
 		hit->pos.z = FP_MUL_T(tMin, dir->z);
 
-		if (obj->type == OBJ_PLANE) {
+		// Sphere Normal
+		hit->normal.x = -FP_MUL_T((hit->pos.x - obj->a), obj->invR);
+		hit->normal.y = -FP_MUL_T((hit->pos.y - obj->b), obj->invR);
+		hit->normal.z = -FP_MUL_T((hit->pos.z - obj->c), obj->invR);
+	} else { // if still FAR_FI, didn't hit any sphere, so do Plane last
+		//t = intersectPlane(&plane, dir);
+		t = planeYt[y];	// cheat, we don't even call intersectPlane as it's a very trivial parallel to ground plane, prestored t hit per scanline
+		if (t > 0) {
+			obj = &plane;
+
+			hit->pos.x = FP_MUL_T(t, dir->x);
+			hit->pos.y = FP_MUL_T(t, dir->y);
+			hit->pos.z = FP_MUL_T(t, dir->z);
+
+			// Plane Normal
 			hit->normal.x = obj->a;
 			hit->normal.y = obj->b;
 			hit->normal.z = obj->c;
-		} else {
-			hit->normal.x = -FP_MUL_T((hit->pos.x - obj->a), obj->invR);
-			hit->normal.y = -FP_MUL_T((hit->pos.y - obj->b), obj->invR);
-			hit->normal.z = -FP_MUL_T((hit->pos.z - obj->c), obj->invR);
 		}
 	}
+	hit->obj = obj;
 }
 
 static void setObjectPlane(Object* obj, Vec3fp pos, Vec3fp dir1, Vec3fp dir2)
@@ -272,7 +278,7 @@ static void updateObjects(int ticks)
 		float t = (float)(((i + 1) << 10) + ticks);
 		float posX = (float)sin(t / 650.0f) * 0.5f;
 		float posY = (float)sin(t / 480.0f) * 0.25f;
-		float posZ = 1.75f + (float)sin(t / 880.0f) * 0.25f;
+		float posZ = 1.25f + (float)sin(t / 880.0f) * 0.5f;
 
 		sphere[i].pos = VEC_FLT_TO_FP(posX, posY, posZ);
 		calcABCD(&sphere[i]);
