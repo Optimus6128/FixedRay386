@@ -199,11 +199,6 @@ static void setObjectSphere(Object* obj, Vec3 pos, float radius, int index)
 	obj->index = index;
 }
 
-/*static void printABCD(Object* obj)
-{
-	printf("R0_%d) %f %f %f %f\n", obj->type, obj->a, obj->b, obj->c, obj->d);
-}*/
-
 static void setupObjects()
 {
 	setObjectPlane(&plane, Vec3(0, 0, -1), Vec3(1, 0, 0), Vec3(0, 0, 1));
