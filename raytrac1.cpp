@@ -223,11 +223,6 @@ static void traceRay(Vec3fp *dir, PerPixelVars *perPixelVars, Hit *hit, int y)
 			hit->pos.x = FP_MUL_T(t, dir->x);
 			hit->pos.y = FP_MUL_T(t, dir->y);
 			hit->pos.z = FP_MUL_T(t, dir->z);
-
-			// Plane Normal
-			hit->normal.x = obj->a;
-			hit->normal.y = obj->b;
-			hit->normal.z = obj->c;
 		}
 	}
 	hit->obj = obj;
@@ -312,8 +307,13 @@ static inline int computeColor(Vec3fp* dir, Hit* hit)
 		switch (obj->type) {
 		case OBJ_PLANE:
 		{
-			//ci = Vdot(dir, &hit->normal);
-			ci = FP_MUL_T(dir->y, hit->normal.y);	// hack for speed as plane parallel to ground happens to have Y vector up and everything else is zero.
+			//Vec3fp normal;
+			//normal.x = obj->a;
+			//normal.y = obj->b;
+			//normal.z = obj->c;
+
+			//ci = Vdot(dir, &normal);
+			ci = FP_MUL_T(dir->y, obj->b);	// hack for speed as plane parallel to ground happens to have Y vector up and everything else is zero.
 
 			CLAMP(ci, 0, ((1 << RP_BITS) - 1));
 			u = (hit->pos.x >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
@@ -326,10 +326,10 @@ static inline int computeColor(Vec3fp* dir, Hit* hit)
 		{
 			ci = Vdot(&lightDir0, &hit->normal) >> (RP_BITS - COL_BITS_OBJ);
 			CLAMP(ci, 0, COLS_OBJ_RANGE);
+			ci += (obj->index << COL_BITS_OBJ);
 		}
 		break;
 		}
-		ci += (obj->index << COL_BITS_OBJ);
 	}
 	return ci;
 }
@@ -382,7 +382,6 @@ static inline int computeColorPlane(Vec3fp* dir, Hit* hit)
 	u = (hit->pos.x >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
 	v = ((hit->pos.z + planeTicks) >> COL_BITS_OBJ) & COLS_OBJ_RANGE;
 	ci = FP_MUL((u ^ v), ci);
-	ci += (obj->index << COL_BITS_OBJ);
 
 	return ci;
 }
