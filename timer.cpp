@@ -22,11 +22,6 @@ static int nFrames = 0;
 #define TIMER_INTERRUPT 0x08
 
 
-void timerClearInterrupt()
-{
-	outp(0x20,0x20);
-}
-
 static uint32 timeValue = 0;
 static int32 nextOldTimer = 0;
 static uint32 timerInitCounter = 0;
@@ -47,18 +42,16 @@ static void INTERRUPT newTimerInterrupt()
 {
 	timeValue++;
 
+#ifndef __DJGPP__
 	nextOldTimer -= 10;
 	if(nextOldTimer <= 0) {
-	nextOldTimer += 182;
-		#ifdef __DJGPP__
-			_go32_dpmi_chain_protected_mode_interrupt_vector(TIMER_INTERRUPT, &oldTimerHandler);
-		#else
-			oldDosTimerInterrupt();
-		#endif
+		nextOldTimer += 182;
+		oldDosTimerInterrupt();
 	} else {
 		// Make sure we still execute the "HEY I'M DONE WITH THIS INTERRUPT" signal.
-		timerClearInterrupt();
+		outp(0x20,0x20);
 	}
+#endif
 }
 
 static void timerInterruptStart()
@@ -77,10 +70,10 @@ static void timerInterruptStart()
 		newTimerHandler.pm_offset   = (unsigned long)newTimerInterrupt;
 		newTimerHandler.pm_selector = _go32_my_cs();
 
-		_go32_dpmi_set_protected_mode_interrupt_vector(TIMER_INTERRUPT, &newTimerHandler);
+		_go32_dpmi_chain_protected_mode_interrupt_vector(TIMER_INTERRUPT, &newTimerHandler);
 	#else
-	oldDosTimerInterrupt = _dos_getvect(TIMER_INTERRUPT);
-	_dos_setvect(TIMER_INTERRUPT, newTimerInterrupt);
+		oldDosTimerInterrupt = _dos_getvect(TIMER_INTERRUPT);
+		_dos_setvect(TIMER_INTERRUPT, newTimerInterrupt);
 	#endif
 
 	_disable();
