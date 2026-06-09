@@ -1,5 +1,10 @@
 #include "timer.h"
 
+#ifdef __DJGPP__
+	#include <go32.h>
+	#include <dpmi.h>
+#endif
+
 #include <string.h>
 #include <conio.h>
 #include <dos.h>
@@ -13,58 +18,13 @@ static uint32 startingFpsTime = 0;
 static int fpsFontsInit = 0;
 static int nFrames = 0;
 
+#define INTERRUPT __interrupt __far
 #define TIMER_INTERRUPT 0x08
 
-// Taken and modified from https://expiredpopsicle.com/articles/2017-04-13-DOS_Timer_Stuff/2017-04-13-DOS_Timer_Stuff.html
-// Pragma AUX don't work for me in OpenWatcom? Inlined assembly in functions for single CLI/STI, oof. But ok as we call these very rarely.
-
-/*
-#pragma aux timerClearInterrupt =		\
-	"mov al,20H",		\
-	"out 20H,al"
-
-#pragma aux doCli =		\
-	"cli"
-
-#pragma aux doSti =		\
-	"sti"
-*/
 
 void timerClearInterrupt()
 {
-	#ifdef __DJGPP__
-		outportb(0x20, 0x20);
-	#else
-		_asm
-		{
-			mov al,20h
-			out 20h,al
-		}
-	#endif
-}
-
-void doCli()
-{
-	#ifdef __DJGPP__
-		// TODO
-	#else
-		_asm
-		{
-			cli
-		}
-	#endif
-}
-
-void doSti()
-{
-	#ifdef __DJGPP__
-		// TODO
-	#else
-		_asm
-		{
-			sti
-		}
-	#endif
+	outp(0x20,0x20);
 }
 
 static uint32 timeValue = 0;
@@ -72,20 +32,32 @@ static int32 nextOldTimer = 0;
 static uint32 timerInitCounter = 0;
 static bool timerInterruptInit = false;
 
-static void (__interrupt __far *oldDosTimerInterrupt)();
+#ifdef __DJGPP__
+	static _go32_dpmi_seginfo oldTimerHandler;
+	static _go32_dpmi_seginfo newTimerHandler;
+#else
+	static void (INTERRUPT *oldDosTimerInterrupt)();
+#endif
 
-static void __interrupt __far newTimerInterrupt()
+#ifdef __DJGPP__
+static void newTimerInterrupt()
+#else
+static void INTERRUPT newTimerInterrupt()
+#endif
 {
 	timeValue++;
 
 	nextOldTimer -= 10;
 	if(nextOldTimer <= 0) {
 	nextOldTimer += 182;
-	oldDosTimerInterrupt();
+		#ifdef __DJGPP__
+			_go32_dpmi_chain_protected_mode_interrupt_vector(TIMER_INTERRUPT, &oldTimerHandler);
+		#else
+			oldDosTimerInterrupt();
+		#endif
 	} else {
-	// Make sure we still execute the "HEY I'M DONE WITH THIS
-	// INTERRUPT" signal.
-	timerClearInterrupt();
+		// Make sure we still execute the "HEY I'M DONE WITH THIS INTERRUPT" signal.
+		timerClearInterrupt();
 	}
 }
 
@@ -99,10 +71,19 @@ static void timerInterruptStart()
 	uint32 c = 1193181 / (uint32)1000;
 
 	// Swap out interrupt handlers.
+	#ifdef __DJGPP__
+		_go32_dpmi_get_protected_mode_interrupt_vector(TIMER_INTERRUPT, &oldTimerHandler);
+
+		newTimerHandler.pm_offset   = (unsigned long)newTimerInterrupt;
+		newTimerHandler.pm_selector = _go32_my_cs();
+
+		_go32_dpmi_set_protected_mode_interrupt_vector(TIMER_INTERRUPT, &newTimerHandler);
+	#else
 	oldDosTimerInterrupt = _dos_getvect(TIMER_INTERRUPT);
 	_dos_setvect(TIMER_INTERRUPT, newTimerInterrupt);
+	#endif
 
-	doCli();
+	_disable();
 
 	// There's a ton of options encoded into this one byte I'm going
 	// to send to the PIT here so...
@@ -123,7 +104,7 @@ static void timerInterruptStart()
 	// Set divisor high byte.
 	outp(0x40, (uint8)((c >> 8) & 0xff));
 
-	doSti();
+	_enable();
 
 	timerInterruptInit = true;
 }
@@ -132,7 +113,7 @@ static void timerInterruptEnd()
 {
 	if (!timerInterruptInit) return;
 
-	doCli();
+	_disable();
 
 	// Send the same command we sent in timer_init() just so we can
 	// set the timer divisor back.
@@ -143,10 +124,14 @@ static void timerInterruptEnd()
 	outp(0x40, 0);
 	outp(0x40, 0);
 
-	doSti();
+	_enable();
 
 	// Restore original timer interrupt handler.
-	_dos_setvect(TIMER_INTERRUPT, oldDosTimerInterrupt);
+	#ifdef __DJGPP__
+		_go32_dpmi_set_protected_mode_interrupt_vector(TIMER_INTERRUPT, &oldTimerHandler);
+	#else
+		_dos_setvect(TIMER_INTERRUPT, oldDosTimerInterrupt);
+	#endif
 
 	timerInterruptInit = false;
 }

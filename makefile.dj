@@ -1,0 +1,12 @@
+CC = gxx
+AS = nasm
+ASFLAGS = -f coff
+CXXFLAGS = -O3 -march=i386 -fomit-frame-pointer -funroll-loops -ffast-math -fno-strict-aliasing
+OBJ = demo.o video.o timer.o tinyfont.o gfxtools.o mathutil.o vector.o fx_ray.o raytrac0.o raytrac1.o
+
+demo.exe : $(OBJ)
+	$(CC) $(OBJ) -lemu -o demoj.exe
+%.o : %.cpp
+	$(CC) $(CXXFLAGS) -c $<
+%.o: %.asm
+	$(AS) $(ASFLAGS) -o $@ $<

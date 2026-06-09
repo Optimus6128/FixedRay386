@@ -11,7 +11,9 @@
 #define CLAMP_LEFT(value,min) if (value<min) value=min;
 #define CLAMP_RIGHT(value,max) if (value>max) value=max;
 
-#define PI 3.14159265359f
+#ifndef PI
+	#define PI 3.14159265359f
+#endif
 
 int isqrt(int x);
 int getRand(int from, int to);
