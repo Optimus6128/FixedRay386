@@ -102,7 +102,7 @@ int main(int argc, char **argv)
 
 	//setTextMode();	// for debugging
 
-	fxRayInit(&screen);
+	fxRayInit(&screen, useFloat);
 
 	while(!quit)
 	{

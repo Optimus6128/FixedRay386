@@ -5,7 +5,7 @@
 #include "demo.h"
 #include "video.h"
 
-void fxRayInit(Screen *screen);
+void fxRayInit(Screen *screen, bool useFloat);
 void fxRayRun(Screen *screen, uint32 ticks, bool useFloat, int subdiv);
 
 #endif

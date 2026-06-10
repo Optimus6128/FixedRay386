@@ -8,7 +8,7 @@
 #include "raytrace.h"
 
 
-void fxRayInit(Screen *screen)
+void fxRayInit(Screen *screen, bool useFloat)
 {
 	makeAndSetPal(0, 255, 0, 0, 0, 63, 63, 63);
 	makeAndSetPal(0, 63, 0, 0, 0, 63, 63, 63);
@@ -16,8 +16,11 @@ void fxRayInit(Screen *screen)
 	makeAndSetPal(128, 191, 0, 0, 0, 15, 63, 31);
 	makeAndSetPal(192, 255, 0, 0, 0, 15, 31, 63);
 
-	raytraceInit0(screen);
-	raytraceInit1();
+	if (useFloat) {
+		raytraceInit0(screen);
+	} else {
+		raytraceInit1();
+	}
 }
 
 void fxRayRun(Screen *screen, uint32 ticks, bool useFloat, int subdiv)
