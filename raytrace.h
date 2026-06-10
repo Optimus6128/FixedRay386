@@ -15,6 +15,6 @@ void raytraceInit0(Screen *buffer);
 void raytraceRun0(Screen *buffer, int ticks);
 
 void raytraceInit1();
-void raytraceRun1(Screen *buffer, int ticks);
+void raytraceRun1(Screen *buffer, int ticks, int subdiv);
 
 #endif

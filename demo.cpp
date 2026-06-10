@@ -26,6 +26,24 @@ uint16 *my_clock = (uint16*)0x046C;
 
 static Screen screen;
 
+static bool useFloat = false;
+static int subdiv = 4;
+
+static void interpretArgument(char *arg)
+{
+	if (!strcmp(arg, "-f")) {
+		useFloat = true;
+	}
+
+	if (!strcmp(arg, "1")) {
+		subdiv = 1;
+	}
+
+	if (!strcmp(arg, "2")) {
+		subdiv = 2;
+	}
+}
+
 static void init(vmode *vm)
 {
 	screen.width = vm->width;
@@ -58,6 +76,10 @@ static void input()
 
 int main(int argc, char **argv)
 {
+	for (int i=1; i<argc; ++i) {
+		interpretArgument(argv[i]);
+	}
+
 #ifdef __DJGPP__
 	__djgpp_nearptr_enable();
 
@@ -86,7 +108,7 @@ int main(int argc, char **argv)
 	{
 		input();
 
-		fxRayRun(&screen, getTime());
+		fxRayRun(&screen, getTime(), useFloat, subdiv);
 
 		drawFps(&screen);
 

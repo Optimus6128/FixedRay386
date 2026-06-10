@@ -731,7 +731,7 @@ static void resetHitBuffer()
 	}
 }
 
-void raytraceRun1(Screen* buffer, int ticks)
+void raytraceRun1(Screen* buffer, int ticks, int subdiv)
 {
 	//memset(buffer->data, 0, buffer->width * buffer->height);
 
@@ -739,7 +739,18 @@ void raytraceRun1(Screen* buffer, int ticks)
 
 	updateObjects(ticks);
 
-	//renderObjects(buffer);
-	//renderObjectsSubdiv2x(buffer);
-	renderObjectsSubdiv4x(buffer);
+	switch(subdiv) {
+		case 1:
+			renderObjects(buffer);
+		break;
+
+		case 2:
+			renderObjectsSubdiv2x(buffer);
+		break;
+
+		case 4:
+		default:
+			renderObjectsSubdiv4x(buffer);
+		break;
+	}
 }

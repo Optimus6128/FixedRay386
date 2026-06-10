@@ -6,6 +6,6 @@
 #include "video.h"
 
 void fxRayInit(Screen *screen);
-void fxRayRun(Screen *screen, uint32 fxFrame);
+void fxRayRun(Screen *screen, uint32 ticks, bool useFloat, int subdiv);
 
 #endif

@@ -20,8 +20,11 @@ void fxRayInit(Screen *screen)
 	raytraceInit1();
 }
 
-void fxRayRun(Screen *screen, uint32 ticks)
+void fxRayRun(Screen *screen, uint32 ticks, bool useFloat, int subdiv)
 {
-	//raytraceRun0(screen, ticks);
-	raytraceRun1(screen, ticks);
+	if (useFloat) {
+		raytraceRun0(screen, ticks);
+	} else {
+		raytraceRun1(screen, ticks, subdiv);
+	}
 }
