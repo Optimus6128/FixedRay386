@@ -21,6 +21,7 @@ static int nFrames = 0;
 #define INTERRUPT __interrupt __far
 #define TIMER_INTERRUPT 0x08
 
+#define TIMER_HZ 100
 
 static uint32 timeValue = 0;
 static int32 nextOldTimer = 0;
@@ -51,6 +52,8 @@ static void INTERRUPT newTimerInterrupt()
 		// Make sure we still execute the "HEY I'M DONE WITH THIS INTERRUPT" signal.
 		outp(0x20,0x20);
 	}
+#else
+		outp(0x20,0x20);
 #endif
 }
 
@@ -61,7 +64,7 @@ static void timerInterruptStart()
 	// The clock we're dealing with here runs at 1.193182mhz, so we
 	// just divide 1.193182 by the number of triggers we want per
 	// second to get our divisor.
-	uint32 c = 1193181 / (uint32)1000;
+	uint32 c = 1193181 / TIMER_HZ;
 
 	// Swap out interrupt handlers.
 	#ifdef __DJGPP__
@@ -70,7 +73,9 @@ static void timerInterruptStart()
 		newTimerHandler.pm_offset   = (unsigned long)newTimerInterrupt;
 		newTimerHandler.pm_selector = _go32_my_cs();
 
-		_go32_dpmi_chain_protected_mode_interrupt_vector(TIMER_INTERRUPT, &newTimerHandler);
+		_go32_dpmi_allocate_iret_wrapper(&newTimerHandler);
+
+		_go32_dpmi_set_protected_mode_interrupt_vector(TIMER_INTERRUPT, &newTimerHandler);
 	#else
 		oldDosTimerInterrupt = _dos_getvect(TIMER_INTERRUPT);
 		_dos_setvect(TIMER_INTERRUPT, newTimerInterrupt);
@@ -131,9 +136,8 @@ static void timerInterruptEnd()
 
 uint32 getTime()
 {
-	return timeValue;
+	return (uint32)(timeValue * (1000 / TIMER_HZ));
 }
-
 void drawFps(Screen *screen)
 {
 	uint32 dt = getTime() - startingFpsTime;
