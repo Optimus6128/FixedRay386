@@ -14,6 +14,7 @@
 typedef struct Object
 {
 	int type;
+	float reflectivity;
 	Vec3 pos, dir1, dir2;
 	float radius;
 	float a, b, c, d;
@@ -23,7 +24,7 @@ typedef struct Object
 typedef struct Hit
 {
 	Object* obj;
-	Vec3 pos;
+	Vec3 pos, normal;
 } Hit;
 
 typedef struct PerPixelPrecs
@@ -61,8 +62,7 @@ static void setupViewDirPerPixelLUTs(Screen* buffer)
 			dir->y = Ydir;
 			dir->z = distFromCamera;
 
-			//Don't normalize yet, if we can get the vis without it..
-			//Vnormalize(dir);
+			Vnormalize(dir);
 
 			*dirDot++ = 2.0f * (dir->x * dir->x + dir->y * dir->y + dir->z * dir->z);
 			dir++;
@@ -182,29 +182,31 @@ static void traceRay(Vec3 *dir, float dirDot, Hit *hit)
 	}
 }
 
-static void setObjectPlane(Object* obj, Vec3 pos, Vec3 dir1, Vec3 dir2)
+static void setObjectPlane(Object* obj, Vec3 pos, Vec3 dir1, Vec3 dir2, float reflectivity)
 {
 	obj->pos = pos;
 	obj->dir1 = dir1;
 	obj->dir2 = dir2;
 	obj->type = OBJ_PLANE;
+	obj->reflectivity = reflectivity;
 	obj->index = 0;
 }
 
-static void setObjectSphere(Object* obj, Vec3 pos, float radius, int index)
+static void setObjectSphere(Object* obj, Vec3 pos, float radius, int index, float reflectivity)
 {
 	obj->pos = pos;
 	obj->radius = radius;
 	obj->type = OBJ_SPHERE;
+	obj->reflectivity = reflectivity;
 	obj->index = index;
 }
 
 static void setupObjects()
 {
-	setObjectPlane(&plane, Vec3(0, 0, -1), Vec3(1, 0, 0), Vec3(0, 0, 1));
-	setObjectSphere(&sphere[0], Vec3(0, -1, 4), 0.25f, 1);
-	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.25f, 2);
-	setObjectSphere(&sphere[2], Vec3(1, -1, 4), 0.25f, 3);
+	setObjectPlane(&plane, Vec3(0, 0, -1), Vec3(1, 0, 0), Vec3(0, 0, 1), 0.0f);
+	setObjectSphere(&sphere[0], Vec3(0, -1, 4), 0.25f, 1, 1.0f);
+	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.25f, 2, 1.0f);
+	setObjectSphere(&sphere[2], Vec3(1, -1, 4), 0.25f, 3, 1.0f);
 
 	calcABCD(&plane);
 	for (int i = 0; i < 3; ++i) {
@@ -238,7 +240,7 @@ void raytraceInit0(Screen* buffer)
 static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 {
 	Object* obj = hit->obj;
-	Vec3 normal;
+	Vec3 *normal = &hit->normal;
 	int ci = 0;
 
 	if (obj) {
@@ -246,11 +248,11 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 			case OBJ_PLANE:
 			{
 				float zOff = (float)ticks * 0.001f;
-				normal.x = obj->a;
-				normal.y = obj->b;
-				normal.z = obj->c;
+				normal->x = obj->a;
+				normal->y = obj->b;
+				normal->z = obj->c;
 
-				ci = (int)(Vdot(dir, &normal) * (1 << COL_BITS));
+				ci = (int)(Vdot(dir, normal) * (1 << COL_BITS));
 				CLAMP(ci, 0, COLS_RANGE);
 				ci = ((((int)((hit->pos.x + 0.5f) * 16) & 15) ^ ((int)((hit->pos.z + 0.5f + zOff) * 16) & 15)) * ci) >> COL_BITS_OBJ;
 			}
@@ -258,13 +260,13 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 
 			case OBJ_SPHERE:
 			{
-				normal.x = -(hit->pos.x - obj->a);
-				normal.y = -(hit->pos.y - obj->b);
-				normal.z = -(hit->pos.z - obj->c);
+				normal->x = -(hit->pos.x - obj->a);
+				normal->y = -(hit->pos.y - obj->b);
+				normal->z = -(hit->pos.z - obj->c);
 
-				Vnormalize(&normal);
+				Vnormalize(normal);
 
-				ci = (int)(Vdot(&lightDir, &normal) * (1 << COL_BITS_OBJ));
+				ci = (int)(Vdot(&lightDir, normal) * (1 << COL_BITS_OBJ));
 				CLAMP(ci, 0, COLS_OBJ_RANGE);
 				break;
 			}
@@ -298,8 +300,22 @@ static void renderObjects(Screen* buffer, int ticks)
 	do {
 		traceRay(dir, *dirDot, &hit);
 
-		//*dst++ = computeColorObjIndex(&hit);
-		*dst++ = computeColor(dir, &hit, ticks);
+		uint8 c = computeColor(dir, &hit, ticks);
+
+		if (hit.obj && hit.obj->reflectivity > 0.0f) {
+			Vec3 reflectDir;
+
+			Vscale(&hit.normal, &reflectDir, 2.0f * Vdot(dir, &hit.normal));
+			Vsub(dir, &reflectDir, &reflectDir);
+			Vnormalize(&reflectDir);
+
+			float reflectDirDot = 2.0f * (reflectDir.x * reflectDir.x + reflectDir.y * reflectDir.y + reflectDir.z * reflectDir.z);
+
+			traceRay(&reflectDir, reflectDirDot, &hit);
+			c = 4 + computeColor(dir, &hit, ticks);
+		}
+
+		*dst++ = c;
 
 		dir++;
 		dirDot++;

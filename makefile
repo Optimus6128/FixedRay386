@@ -2,7 +2,7 @@ obj = demo.obj timer.obj tinyfont.obj video.obj mathutil.obj gfxtools.obj fx_ray
 bin = demo.exe
 
 CPP = wpp386
-CXXFLAGS = -3 -fpc -otexan -oh -oi -ei -bt=DOS
+CXXFLAGS = -3 -fp3 -otexan -oh -oi -ei -bt=DOS
 LD = wlink
 
 $(bin): $(obj)
