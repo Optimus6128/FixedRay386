@@ -132,6 +132,51 @@ static void calcABCD(Object* obj)
 	}
 }
 
+static inline float intersectPlane2(Object *obj, Vec3 *pos, Vec3 *dir)
+{
+	const float denom = obj->a * dir->x + obj->b * dir->y + obj->c * dir->z;
+
+	if (denom != 0) {
+		return -(obj->a * pos->x + obj->b * pos->y + obj->c * pos->z + obj->d) / denom;
+	}
+	return -1;
+}
+
+static inline float intersectSphere2(Object *obj, Vec3 *pos, Vec3 *dir)
+{
+	const float a = dir->x * dir->x + dir->y * dir->y + dir->z * dir->z;
+	const float b = 2 * (dir->x * (pos->x - obj->pos.x) + dir->y * (pos->y - obj->pos.y) + dir->z * (pos->z - obj->pos.z));
+	const float c = (pos->x - obj->pos.x) * (pos->x - obj->pos.x) + (pos->y - obj->pos.y) * (pos->y - obj->pos.y) + (pos->z - obj->pos.z) * (pos->z - obj->pos.z) - obj->radius * obj->radius;
+
+	float d = b * b - 4 * a * c;
+	if (d >= 0)
+	{
+		d = sqrt(d);
+
+		float t1 = (-b + d) / (2 * a);
+		float t2 = (-b - d) / (2 * a);
+
+		if (t1 <= 0 && t2 <= 0) {
+			return -1;
+		}
+
+		if (t1 < t2) {
+			if (t1 > 0) {
+				return t1;
+			} else {
+				return t2;
+			}
+		} else {
+			if (t2 > 0) {
+				return t2;
+			} else {
+				return t1;
+			}
+		}
+	}
+	return -1;
+}
+
 static inline float intersectPlane(Object* obj, Vec3* dir)
 {
 	const float denom = obj->a * dir->x + obj->b * dir->y + obj->c * dir->z;
@@ -161,7 +206,41 @@ static inline float intersectSphere(Object* obj, Vec3* dir, float dirDot)
 	return -1;
 }
 
-static void traceRay(Vec3 *dir, float dirDot, Hit *hit)
+static void traceRayFromReflectPosition(Hit *hit, Vec3 *dir)
+{
+	float t, tMin = FAR_F;
+
+	Object *prevHitObj = hit->obj;
+
+	Vec3 reflectPos;
+	reflectPos.x = hit->pos.x;
+	reflectPos.y = hit->pos.y;
+	reflectPos.z = hit->pos.z;
+
+	hit->obj = NULL;
+	if (prevHitObj != &plane) {
+		t = intersectPlane2(&plane, &reflectPos, dir);
+		if (t > 0.0f) { tMin = t; hit->obj = &plane; }
+	}
+
+	if (prevHitObj != &sphere[0]) {
+		t = intersectSphere2(&sphere[0], &reflectPos, dir); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[0]; }
+	}
+	if (prevHitObj != &sphere[1]) {
+		t = intersectSphere2(&sphere[1], &reflectPos, dir); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[1]; }
+	}
+	if (prevHitObj != &sphere[2]) {
+		t = intersectSphere2(&sphere[2], &reflectPos, dir); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[2]; }
+	}
+
+	if (tMin < FAR_F) {
+		hit->pos.x = reflectPos.x + tMin * dir->x;
+		hit->pos.y = reflectPos.y + tMin * dir->y;
+		hit->pos.z = reflectPos.z + tMin * dir->z;
+	}
+}
+
+static void traceRayFromOriginView(Vec3 *dir, float dirDot, Hit *hit)
 {
 	float t, tMin = FAR_F;
 
@@ -204,8 +283,8 @@ static void setObjectSphere(Object* obj, Vec3 pos, float radius, int index, floa
 static void setupObjects()
 {
 	setObjectPlane(&plane, Vec3(0, 0, -1), Vec3(1, 0, 0), Vec3(0, 0, 1), 0.0f);
-	setObjectSphere(&sphere[0], Vec3(0, -1, 4), 0.25f, 1, 1.0f);
-	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.25f, 2, 1.0f);
+	setObjectSphere(&sphere[0], Vec3(0, -1, 4), 0.25f, 1, 0.0f);
+	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.25f, 2, 0.0f);
 	setObjectSphere(&sphere[2], Vec3(1, -1, 4), 0.25f, 3, 1.0f);
 
 	calcABCD(&plane);
@@ -271,7 +350,6 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 				break;
 			}
 		}
-		ci += (obj->index << COL_BITS_OBJ);
 	}
 	return ci;
 }
@@ -287,6 +365,8 @@ static inline int computeColorObjIndex(Hit* hit)
 
 static void renderObjects(Screen* buffer, int ticks)
 {
+	int width = buffer->width;
+	int height = buffer->height;
 	int count = buffer->width * buffer->height;
 	uint8* dst = (uint8*)buffer->data;
 
@@ -297,29 +377,40 @@ static void renderObjects(Screen* buffer, int ticks)
 	lightDir = Vec3(-0.25f, -0.5f, 0.875f);
 	Vnormalize(&lightDir);
 
-	do {
-		traceRay(dir, *dirDot, &hit);
+	for (int y=0; y<height; ++y) {
+		for (int x=0; x<width; ++x) {
+			traceRayFromOriginView(dir, *dirDot, &hit);
 
-		uint8 c = computeColor(dir, &hit, ticks);
+			uint8 c = computeColor(dir, &hit, ticks);
+			uint8 reflectAdd = 0;
 
-		if (hit.obj && hit.obj->reflectivity > 0.0f) {
-			Vec3 reflectDir;
+			if (hit.obj && hit.obj->reflectivity > 0.0f) {
+				Vec3 reflectDir;
 
-			Vscale(&hit.normal, &reflectDir, 2.0f * Vdot(dir, &hit.normal));
-			Vsub(dir, &reflectDir, &reflectDir);
-			Vnormalize(&reflectDir);
+				Vscale(&hit.normal, &reflectDir, 2.0f * Vdot(dir, &hit.normal));
+				Vsub(dir, &reflectDir, &reflectDir);
+				Vnormalize(&reflectDir);
 
-			float reflectDirDot = 2.0f * (reflectDir.x * reflectDir.x + reflectDir.y * reflectDir.y + reflectDir.z * reflectDir.z);
+				float reflectDirDot = 2.0f * (reflectDir.x * reflectDir.x + reflectDir.y * reflectDir.y + reflectDir.z * reflectDir.z);
 
-			traceRay(&reflectDir, reflectDirDot, &hit);
-			c = 4 + computeColor(dir, &hit, ticks);
+				traceRayFromReflectPosition(&hit, &reflectDir);
+				reflectAdd = 4;
+				c = reflectAdd + computeColor(dir, &hit, ticks);
+			}
+
+			if (hit.obj) {
+				CLAMP(c, 0, COLS_OBJ_RANGE);
+				c += (hit.obj->index << COL_BITS_OBJ);
+			} else {
+				c = 208 - (y >> 3) + reflectAdd;
+			}
+
+			*dst++ = c;
+
+			dir++;
+			dirDot++;
 		}
-
-		*dst++ = c;
-
-		dir++;
-		dirDot++;
-	} while (--count != 0);
+	}
 }
 
 void raytraceRun0(Screen* buffer, int ticks)
