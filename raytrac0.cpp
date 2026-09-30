@@ -25,7 +25,7 @@ typedef struct Object
 typedef struct Hit
 {
 	Object* obj;
-	Vec3 pos, normal;
+	Vec3 pos, normal, reflectNormal;
 } Hit;
 
 typedef struct PerPixelPrecs
@@ -84,40 +84,6 @@ static void setupViewDirPerPixelLUTs(Screen* buffer)
         }
         Ydir -= Yinc;
     }
-}
-
-static void renderViewDir(Screen* buffer)
-{
-	const int width = buffer->width;
-	const int height = buffer->height;
-	uint8* dst = (uint8*)buffer->data;
-
-	Vec3* src = perPixelPrecs.viewDir;
-	for (int y = 0; y < height; ++y) {
-		for (int x = 0; x < width; ++x) {
-			uint32 c = (uint32)((src->x * src->x + src->y * src->y) * 255.0f);
-			if (c > 255) c = 255;
-			*dst++ = (uint8)(c >> 1);
-			++src;
-		}
-	}
-}
-
-static void renderViewDirDot(Screen* buffer)
-{
-	const int width = buffer->width;
-	const int height = buffer->height;
-	uint8* dst = (uint8*)buffer->data;
-
-	float* src = perPixelPrecs.dirDot;
-	for (int y = 0; y < height; ++y) {
-		for (int x = 0; x < width; ++x) {
-			uint32 c = (uint32)(*src * 16);
-			if (c > 255) c = 255;
-			*dst++ = (uint8)c;
-			++src;
-		}
-	}
 }
 
 static void calcABCD(Object* obj)
@@ -220,7 +186,7 @@ static inline float intersectSphere(Object* obj, Vec3* dir, float dirDot)
 	return -1;
 }
 
-static void traceRayFromReflectPosition(Hit *hit, Vec3 *dir)
+static void traceRayFromReflectPosition(Hit *hit)
 {
 	float t, tMin = FAR_F;
 
@@ -235,21 +201,21 @@ static void traceRayFromReflectPosition(Hit *hit, Vec3 *dir)
 
 	for (int i=0; i<NUM_PLANES; ++i) {
 		if (prevHitObj != &plane[i]) {
-			t = intersectPlane2(&plane[i], &reflectPos, dir);
+			t = intersectPlane2(&plane[i], &reflectPos, &hit->reflectNormal);
 			if (t > 0.0f) { tMin = t; hit->obj = &plane[i]; }
 		}
 	}
 
 	for (int i=0; i<NUM_SPHERES; ++i) {
 		if (prevHitObj != &sphere[i]) {
-			t = intersectSphere2(&sphere[i], &reflectPos, dir); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[i]; }
+			t = intersectSphere2(&sphere[i], &reflectPos, &hit->reflectNormal); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[i]; }
 		}
 	}
 
 	if (tMin < FAR_F) {
-		hit->pos.x = reflectPos.x + tMin * dir->x;
-		hit->pos.y = reflectPos.y + tMin * dir->y;
-		hit->pos.z = reflectPos.z + tMin * dir->z;
+		hit->pos.x = reflectPos.x + tMin * hit->reflectNormal.x;
+		hit->pos.y = reflectPos.y + tMin * hit->reflectNormal.y;
+		hit->pos.z = reflectPos.z + tMin * hit->reflectNormal.z;
 	}
 }
 
@@ -313,7 +279,7 @@ static void setupObjects()
 static void updateObjects(int ticks)
 {
 	for (int i = 0; i < 3; ++i) {
-		float t = (float)(((i + 1) << 10) + ticks);
+		float t = (float)((i + 1) << 10) + (float)ticks * 0.5f;
 		float posX = (float)sin(t / 650.0f) * 0.5f;
 		float posY = (float)sin(t / 480.0f) * 0.375f;
 		float posZ = 1.75f + (float)sin(t / 880.0f) * 0.325f;
@@ -344,11 +310,24 @@ void raytraceInit0(Screen* buffer)
 	raytraceInitTextures();
 }
 
+static Vec3 getReflectDir(Vec3 *viewDir, Vec3 *hitNormal)
+{
+	Vec3 reflectDir;
+
+	Vscale(hitNormal, &reflectDir, 2.0f * Vdot(viewDir, hitNormal));
+	Vsub(viewDir, &reflectDir, &reflectDir);
+	Vnormalize(&reflectDir);
+
+	return reflectDir;
+}
+
 static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 {
 	Object* obj = hit->obj;
 	Vec3 *normal = &hit->normal;
-	int ci = 0;
+	int colDiffuse = 0;
+	int colSpecular = 0;
+	int colFinal = 0;
 
 	if (obj) {
 		switch (obj->type) {
@@ -382,11 +361,12 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 					planeTexH = CLOUD_TEX_H;
 				}
 
-				ci = (int)(Vdot(dir, normal) * (1 << COL_BITS));
-				CLAMP(ci, 0, COLS_RANGE);
+				colDiffuse = (int)(Vdot(dir, normal) * 256);
+				//CLAMP(colDiffuse, 0, 255);
 				int u = (int)((scaleW * hit->pos.x + 0.5f) * planeTexW) & (planeTexW - 1);
 				int v = (int)((scaleH * hit->pos.z + 0.5f + zOff) * planeTexH) & (planeTexH - 1);
-				ci = (texture[v * planeTexW + u] * ci) >> COL_BITS_OBJ;
+				colFinal = (texture[v * planeTexW + u] * colDiffuse) >> 7;
+				CLAMP(colFinal, 0, COLS_OBJ_RANGE - 1)
 			}
 			break;
 
@@ -398,22 +378,20 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 
 				Vnormalize(normal);
 
-				ci = (int)(Vdot(&lightDir, normal) * (1 << COL_BITS_OBJ));
-				CLAMP(ci, 0, COLS_OBJ_RANGE);
+				colDiffuse = (int)(Vdot(&lightDir, normal) * (DIFFUSE_COLS - 1));
+				CLAMP(colDiffuse, 0, DIFFUSE_COLS-1);
+
+				hit->reflectNormal = getReflectDir(dir, normal);
+				colSpecular = (int)(pow(Vdot(&lightDir, &hit->reflectNormal), 16.0f) * (SPEC_COLS - 1));
+				CLAMP(colSpecular, 0, SPEC_COLS - 1);
+
+				colFinal = colDiffuse + colSpecular;
+
 				break;
 			}
 		}
 	}
-	return ci;
-}
-
-static inline int computeColorObjIndex(Hit* hit)
-{
-	Object* obj = hit->obj;
-	if (obj) {
-		return (((obj->index+1) << 6) - 1);
-	}
-	return 0;
+	return colFinal;
 }
 
 static void renderObjects(Screen* buffer, int ticks)
@@ -438,17 +416,9 @@ static void renderObjects(Screen* buffer, int ticks)
 			uint8 reflectAdd = 0;
 
 			if (hit.obj && hit.obj->reflectivity > 0.0f) {
-				Vec3 reflectDir;
-
-				Vscale(&hit.normal, &reflectDir, 2.0f * Vdot(dir, &hit.normal));
-				Vsub(dir, &reflectDir, &reflectDir);
-				Vnormalize(&reflectDir);
-
-				float reflectDirDot = 2.0f * (reflectDir.x * reflectDir.x + reflectDir.y * reflectDir.y + reflectDir.z * reflectDir.z);
-
-				traceRayFromReflectPosition(&hit, &reflectDir);
+				traceRayFromReflectPosition(&hit);
 				reflectAdd = 4;
-				c = reflectAdd + computeColor(dir, &hit, ticks);
+				c = (c + 3*computeColor(dir, &hit, ticks)) >> 2;
 			}
 
 			if (hit.obj) {
@@ -469,9 +439,6 @@ static void renderObjects(Screen* buffer, int ticks)
 void raytraceRun0(Screen* buffer, int ticks)
 {
 	updateObjects(ticks);
-
-	//renderViewDir(buffer);
-	//renderViewDirDot(buffer);
 
 	renderObjects(buffer, ticks);
 }

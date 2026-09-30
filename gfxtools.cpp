@@ -1,13 +1,14 @@
 #include <math.h>
 
 #include "gfxtools.h"
+#include "raytrace.h"
 #include "mathutil.h"
 #include "video.h"
 
 
 #define RANGE_SHR 12
 #define RANGE 4096
-#define RANGE_COL 6
+#define RANGE_COL COL_BITS_OBJ
 #define RANGE_TO_COL (RANGE_SHR - RANGE_COL)
 
 #define FIX_MUL(a,b) ((a * b) >> RANGE_SHR)
@@ -122,8 +123,8 @@ void genGridTexture(int width, int height, unsigned char *imgData)
 		yc = y - (height >> 1);
 		for (x=0; x<width; x++) {
 			xc = x - (width >> 1);
-			c = (xc * xc * xc * xc + yc * yc * yc * yc) >> 16;
-			if (c > 31) c = 31;
+			c = (xc * xc * xc * xc + yc * yc * yc * yc) >> 15;
+			CLAMP(c, 0, COLS_OBJ_RANGE-1)
 			*imgData++ = c;
 		}
 	}

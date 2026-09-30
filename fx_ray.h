@@ -3,6 +3,7 @@
 
 #include "types.h"
 #include "demo.h"
+#include "raytrace.h"
 #include "video.h"
 
 void fxRayInit(Screen *screen, bool useFloat);
