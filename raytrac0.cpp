@@ -197,25 +197,28 @@ static void traceRayFromReflectPosition(Hit *hit)
 	reflectPos.y = hit->pos.y;
 	reflectPos.z = hit->pos.z;
 
+	//Vec3 *reflectDir = &hit->normal;
+	Vec3 *reflectDir = &hit->reflectNormal;
+
 	hit->obj = NULL;
 
 	for (int i=0; i<NUM_PLANES; ++i) {
 		if (prevHitObj != &plane[i]) {
-			t = intersectPlane2(&plane[i], &reflectPos, &hit->reflectNormal);
+			t = intersectPlane2(&plane[i], &reflectPos, reflectDir);
 			if (t > 0.0f) { tMin = t; hit->obj = &plane[i]; }
 		}
 	}
 
 	for (int i=0; i<NUM_SPHERES; ++i) {
 		if (prevHitObj != &sphere[i]) {
-			t = intersectSphere2(&sphere[i], &reflectPos, &hit->reflectNormal); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[i]; }
+			t = intersectSphere2(&sphere[i], &reflectPos, reflectDir); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[i]; }
 		}
 	}
 
 	if (tMin < FAR_F) {
-		hit->pos.x = reflectPos.x + tMin * hit->reflectNormal.x;
-		hit->pos.y = reflectPos.y + tMin * hit->reflectNormal.y;
-		hit->pos.z = reflectPos.z + tMin * hit->reflectNormal.z;
+		hit->pos.x = reflectPos.x + tMin * reflectDir->x;
+		hit->pos.y = reflectPos.y + tMin * reflectDir->y;
+		hit->pos.z = reflectPos.z + tMin * reflectDir->z;
 	}
 }
 
@@ -310,15 +313,15 @@ void raytraceInit0(Screen* buffer)
 	raytraceInitTextures();
 }
 
-static Vec3 getReflectDir(Vec3 *viewDir, Vec3 *hitNormal)
+static Vec3 getReflectNormal(Vec3 *viewDir, Vec3 *hitNormal)
 {
-	Vec3 reflectDir;
+	Vec3 reflectNormal;
 
-	Vscale(hitNormal, &reflectDir, 2.0f * Vdot(viewDir, hitNormal));
-	Vsub(viewDir, &reflectDir, &reflectDir);
-	Vnormalize(&reflectDir);
+	Vscale(hitNormal, &reflectNormal, 2.0f * Vdot(viewDir, hitNormal));
+	Vsub(viewDir, &reflectNormal, &reflectNormal);
+	Vnormalize(&reflectNormal);
 
-	return reflectDir;
+	return reflectNormal;
 }
 
 static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
@@ -381,7 +384,7 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 				colDiffuse = (int)(Vdot(&lightDir, normal) * (DIFFUSE_COLS - 1));
 				CLAMP(colDiffuse, 0, DIFFUSE_COLS-1);
 
-				hit->reflectNormal = getReflectDir(dir, normal);
+				hit->reflectNormal = getReflectNormal(dir, normal);
 				colSpecular = (int)(pow(Vdot(&lightDir, &hit->reflectNormal), 16.0f) * (SPEC_COLS - 1));
 				CLAMP(colSpecular, 0, SPEC_COLS - 1);
 
@@ -402,7 +405,7 @@ static void renderObjects(Screen* buffer, int ticks)
 	uint8* dst = (uint8*)buffer->data;
 
 	Hit hit;
-	Vec3* dir = perPixelPrecs.viewDir;
+	Vec3* viewDir = perPixelPrecs.viewDir;
 	float* dirDot = perPixelPrecs.dirDot;
 
 	lightDir = Vec3(-0.25f, -0.5f, 0.875f);
@@ -411,17 +414,23 @@ static void renderObjects(Screen* buffer, int ticks)
 
 	for (int y=0; y<height; ++y) {
 		for (int x=0; x<width; ++x) {
-			traceRayFromOriginView(dir, *dirDot, &hit);
+			traceRayFromOriginView(viewDir, *dirDot, &hit);
 
-			uint8 c = computeColor(dir, &hit, ticks);
+			uint8 c = computeColor(viewDir, &hit, ticks);
 			uint8 reflectAdd = 0;
 
 			if (hit.obj && hit.obj->reflectivity > 0.0f) {
+				Vec3 newViewDir;
+				newViewDir.x = hit.normal.x;
+				newViewDir.y = hit.normal.y;
+				newViewDir.z = hit.normal.z;
+
 				traceRayFromReflectPosition(&hit);
 				reflectAdd = 4;
-				//c = (c + 3*computeColor(dir, &hit, ticks)) >> 2;
-				//c = (3*c + computeColor(&hit.reflectNormal, &hit, ticks)) >> 2;
-				c = (c * computeColor(&hit.reflectNormal, &hit, ticks)) >> 6;
+				//c = (c + computeColor(&newViewDir, &hit, ticks)) >> 1;
+				//c = (c + 3*computeColor(&newViewDir, &hit, ticks)) >> 2;
+				//c = (3*c + computeColor(&newViewDir, &hit, ticks)) >> 2;
+				c = (c * computeColor(&newViewDir, &hit, ticks)) >> 6;
 			}
 
 			if (hit.obj) {
@@ -433,7 +442,7 @@ static void renderObjects(Screen* buffer, int ticks)
 
 			*dst++ = c;
 
-			dir++;
+			viewDir++;
 			dirDot++;
 		}
 	}
