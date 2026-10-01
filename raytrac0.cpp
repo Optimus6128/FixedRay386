@@ -43,12 +43,13 @@ typedef struct PerPixelPrecs
 static uint8 floorTex[CYBER_TEX_W * CYBER_TEX_H];
 static uint8 ceilingTex[CLOUD_TEX_W * CLOUD_TEX_H];
 
-
 #define NUM_PLANES 2
 #define NUM_SPHERES 3
+#define NUM_CYLINDERS 1
 
 static Object plane[NUM_PLANES];
 static Object sphere[NUM_SPHERES];
+static Object cylinder[NUM_CYLINDERS];
 static Vec3 lightDir;
 
 static PerPixelPrecs perPixelPrecs;
@@ -107,6 +108,13 @@ static void calcABCD(Object* obj)
 			obj->d = 2.0f * (obj->pos.x * obj->pos.x + obj->pos.y * obj->pos.y + obj->pos.z * obj->pos.z - obj->radius * obj->radius);
 			break;
 
+		case OBJ_CYLINDER:
+			obj->a = obj->pos.x;
+			obj->b = 0;
+			obj->c = obj->pos.z;
+			obj->d = 2.0f * (obj->pos.x * obj->pos.x + obj->pos.z * obj->pos.z - obj->radius * obj->radius);
+			break;
+
 		default:
 			break;
 	}
@@ -127,6 +135,42 @@ static inline float intersectSphere2(Object *obj, Vec3 *pos, Vec3 *dir)
 	const float a = dir->x * dir->x + dir->y * dir->y + dir->z * dir->z;
 	const float b = 2 * (dir->x * (pos->x - obj->pos.x) + dir->y * (pos->y - obj->pos.y) + dir->z * (pos->z - obj->pos.z));
 	const float c = (pos->x - obj->pos.x) * (pos->x - obj->pos.x) + (pos->y - obj->pos.y) * (pos->y - obj->pos.y) + (pos->z - obj->pos.z) * (pos->z - obj->pos.z) - obj->radius * obj->radius;
+
+	float d = b * b - 4 * a * c;
+	if (d >= 0)
+	{
+		d = sqrt(d);
+
+		float t1 = (-b + d) / (2 * a);
+		float t2 = (-b - d) / (2 * a);
+
+		if (t1 <= 0 && t2 <= 0) {
+			return -1;
+		}
+
+		if (t1 < t2) {
+			if (t1 > 0) {
+				return t1;
+			} else {
+				return t2;
+			}
+		} else {
+			if (t2 > 0) {
+				return t2;
+			} else {
+				return t1;
+			}
+		}
+	}
+	return -1;
+}
+
+static inline float intersectCylinder2(Object *obj, Vec3 *pos, Vec3 *dir)
+{
+	const float a = dir->x * dir->x + dir->z * dir->z;
+	//const float a = dir->x * dir->x + dir->y * dir->y + dir->z * dir->z;
+	const float b = 2 * (dir->x * (pos->x - obj->pos.x) + dir->z * (pos->z - obj->pos.z));
+	const float c = (pos->x - obj->pos.x) * (pos->x - obj->pos.x) + (pos->z - obj->pos.z) * (pos->z - obj->pos.z) - obj->radius * obj->radius;
 
 	float d = b * b - 4 * a * c;
 	if (d >= 0)
@@ -186,6 +230,33 @@ static inline float intersectSphere(Object* obj, Vec3* dir, float dirDot)
 	return -1;
 }
 
+static inline float intersectCylinder(Object* obj, Vec3* dir, float dirDot)
+{
+	if (dirDot == 0.0f) return -1;
+
+	const float a = dir->x * dir->x + dir->z * dir->z;
+	const float b = 2 * (dir->x * (-obj->pos.x) + dir->z * (-obj->pos.z));
+	const float c = obj->d;
+
+	dirDot = 2.0f * a;
+
+	float d = b * b - 2.0f * dirDot * c;
+	d = -d;
+	if (d >= 0) {
+		d = (float)sqrt(d);
+
+		float t = (-b - d) / dirDot;
+		if (t <= 0) {
+			t = (-b + d) / dirDot;
+		}
+
+		float pY = -t * dir->y;
+		if (pY < 0.01f) return -1;
+		return t;
+	}
+	return -1;
+}
+
 static void traceRayFromReflectPosition(Hit *hit)
 {
 	float t, tMin = FAR_F;
@@ -215,6 +286,12 @@ static void traceRayFromReflectPosition(Hit *hit)
 		}
 	}
 
+	for (int i=0; i<NUM_CYLINDERS; ++i) {
+		if (prevHitObj != &cylinder[i]) {
+			t = intersectCylinder2(&cylinder[i], &reflectPos, reflectDir); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &cylinder[i]; }
+		}
+	}
+
 	if (tMin < FAR_F) {
 		hit->pos.x = reflectPos.x + tMin * reflectDir->x;
 		hit->pos.y = reflectPos.y + tMin * reflectDir->y;
@@ -235,6 +312,10 @@ static void traceRayFromOriginView(Vec3 *dir, float dirDot, Hit *hit)
 
 	for (int i=0; i<NUM_SPHERES; ++i) {
 		t = intersectSphere(&sphere[i], dir, dirDot); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[i]; }
+	}
+
+	for (int i=0; i<NUM_CYLINDERS; ++i) {
+		t = intersectCylinder(&cylinder[i], dir, dirDot); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &cylinder[i]; }
 	}
 
 	if (tMin < FAR_F) {
@@ -262,6 +343,14 @@ static void setObjectSphere(Object* obj, Vec3 pos, float radius, int index, floa
 	obj->reflectivity = reflectivity;
 	obj->index = index;
 }
+static void setObjectCylinder(Object *obj, Vec3 pos, float radius, int index, float reflectivity)
+{
+	obj->pos = pos;
+	obj->radius = radius;
+	obj->type = OBJ_CYLINDER;
+	obj->reflectivity = reflectivity;
+	obj->index = index;
+}
 
 static void setupObjects()
 {
@@ -271,11 +360,16 @@ static void setupObjects()
 	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.375f, 2, 1.0f);
 	setObjectSphere(&sphere[2], Vec3(1, -1, 4), 0.325f, 3, 0.0f);
 
+	setObjectCylinder(&cylinder[0], Vec3(0,0,8), 1.0f, 1, 0.0f);
+
 	for (int i = 0; i < NUM_PLANES; ++i) {
 		calcABCD(&plane[i]);
 	}
 	for (int i = 0; i < NUM_SPHERES; ++i) {
 		calcABCD(&sphere[i]);
+	}
+	for (int i = 0; i < NUM_CYLINDERS; ++i) {
+		calcABCD(&cylinder[i]);
 	}
 }
 
@@ -377,6 +471,26 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 			{
 				normal->x = (hit->pos.x - obj->a);
 				normal->y = (hit->pos.y - obj->b);
+				normal->z = (hit->pos.z - obj->c);
+
+				Vnormalize(normal);
+
+				colDiffuse = (int)(Vdot(&lightDir, normal) * (DIFFUSE_COLS - 1));
+				CLAMP(colDiffuse, 0, DIFFUSE_COLS-1);
+
+				hit->reflectNormal = getReflectNormal(dir, normal);
+				colSpecular = (int)(pow(Vdot(&lightDir, &hit->reflectNormal), 16.0f) * (SPEC_COLS - 1));
+				CLAMP(colSpecular, 0, SPEC_COLS - 1);
+
+				colFinal = colDiffuse + colSpecular;
+
+				break;
+			}
+
+			case OBJ_CYLINDER:
+			{
+				normal->x = (hit->pos.x - obj->a);
+				normal->y = 0.0f;
 				normal->z = (hit->pos.z - obj->c);
 
 				Vnormalize(normal);

@@ -12,7 +12,7 @@
 #define DIFFUSE_COLS (COLS_OBJ_RANGE - SPEC_COLS)
 
 
-enum { OBJ_NOTHING, OBJ_PLANE, OBJ_SPHERE, OBJ_TYPES_COUNT };
+enum { OBJ_NOTHING, OBJ_PLANE, OBJ_SPHERE, OBJ_CYLINDER, OBJ_TYPES_COUNT };
 
 void raytraceInit0(Screen *buffer);
 void raytraceRun0(Screen *buffer, int ticks);
