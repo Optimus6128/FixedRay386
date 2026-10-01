@@ -97,7 +97,7 @@ static void calcABCD(Object* obj)
 			obj->a = v.x;
 			obj->b = v.y;
 			obj->c = v.z;
-			obj->d = obj->pos.y;
+			obj->d = -obj->pos.y;
 			break;
 
 		case OBJ_SPHERE:
@@ -262,8 +262,8 @@ static void setObjectSphere(Object* obj, Vec3 pos, float radius, int index, floa
 
 static void setupObjects()
 {
-	setObjectPlane(&plane[0], Vec3(0, -1, 0), Vec3(1, 0, 0), Vec3(0, 0, 1), 2, 0.0f);
-	setObjectPlane(&plane[1], Vec3(0, 1, 0), Vec3(1, 0, 0), Vec3(0, 0, 1), 3, 0.0f);
+	setObjectPlane(&plane[0], Vec3(0, -1, 0), Vec3(1, 0, 0), Vec3(0, 0, 1), 3, 0.0f);
+	setObjectPlane(&plane[1], Vec3(0, 1, 0), Vec3(1, 0, 0), Vec3(0, 0, 1), 2, 0.0f);
 	setObjectSphere(&sphere[0], Vec3(0, -1, 4), 0.25f, 1, 0.0f);
 	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.375f, 2, 1.0f);
 	setObjectSphere(&sphere[2], Vec3(1, -1, 4), 0.325f, 3, 0.0f);
@@ -344,7 +344,7 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 				normal->y = obj->b;
 				normal->z = obj->c;
 
-				if (obj->pos.y < 0) {
+				if (obj->pos.y > 0) {
 					scaleW = 1.0f;
 					scaleH = 1.0f;
 					zOff = (float)ticks * 0.0005f;
@@ -372,9 +372,9 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 
 			case OBJ_SPHERE:
 			{
-				normal->x = -(hit->pos.x - obj->a);
-				normal->y = -(hit->pos.y - obj->b);
-				normal->z = -(hit->pos.z - obj->c);
+				normal->x = (hit->pos.x - obj->a);
+				normal->y = (hit->pos.y - obj->b);
+				normal->z = (hit->pos.z - obj->c);
 
 				Vnormalize(normal);
 
@@ -407,6 +407,7 @@ static void renderObjects(Screen* buffer, int ticks)
 
 	lightDir = Vec3(-0.25f, -0.5f, 0.875f);
 	Vnormalize(&lightDir);
+	Vneg(&lightDir);
 
 	for (int y=0; y<height; ++y) {
 		for (int x=0; x<width; ++x) {
@@ -418,7 +419,9 @@ static void renderObjects(Screen* buffer, int ticks)
 			if (hit.obj && hit.obj->reflectivity > 0.0f) {
 				traceRayFromReflectPosition(&hit);
 				reflectAdd = 4;
-				c = (c + 3*computeColor(dir, &hit, ticks)) >> 2;
+				//c = (c + 3*computeColor(dir, &hit, ticks)) >> 2;
+				//c = (3*c + computeColor(&hit.reflectNormal, &hit, ticks)) >> 2;
+				c = (c * computeColor(&hit.reflectNormal, &hit, ticks)) >> 6;
 			}
 
 			if (hit.obj) {
