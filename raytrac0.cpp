@@ -112,7 +112,7 @@ static void calcABCD(Object* obj)
 			obj->a = obj->pos.x;
 			obj->b = 0;
 			obj->c = obj->pos.z;
-			obj->d = 2.0f * (obj->pos.x * obj->pos.x + obj->pos.z * obj->pos.z - obj->radius * obj->radius);
+			obj->d = obj->pos.x * obj->pos.x + obj->pos.z * obj->pos.z - obj->radius * obj->radius;
 			break;
 
 		default:
@@ -134,7 +134,8 @@ static inline float intersectSphere2(Object *obj, Vec3 *pos, Vec3 *dir)
 {
 	const float a = dir->x * dir->x + dir->y * dir->y + dir->z * dir->z;
 	const float b = 2 * (dir->x * (pos->x - obj->pos.x) + dir->y * (pos->y - obj->pos.y) + dir->z * (pos->z - obj->pos.z));
-	const float c = (pos->x - obj->pos.x) * (pos->x - obj->pos.x) + (pos->y - obj->pos.y) * (pos->y - obj->pos.y) + (pos->z - obj->pos.z) * (pos->z - obj->pos.z) - obj->radius * obj->radius;
+	const float c = (pos->x - obj->pos.x) * (pos->x - obj->pos.x) + (pos->y - obj->pos.y) * (pos->y - obj->pos.y) + (pos->z - obj->pos.z) * (pos->z - obj->pos.z) - 2.0f * (obj->pos.x * pos->x - obj->pos.z * pos->z) - obj->radius * obj->radius;
+
 
 	float d = b * b - 4 * a * c;
 	if (d >= 0)
@@ -168,17 +169,16 @@ static inline float intersectSphere2(Object *obj, Vec3 *pos, Vec3 *dir)
 static inline float intersectCylinder2(Object *obj, Vec3 *pos, Vec3 *dir)
 {
 	const float a = dir->x * dir->x + dir->z * dir->z;
-	//const float a = dir->x * dir->x + dir->y * dir->y + dir->z * dir->z;
-	const float b = 2 * (dir->x * (pos->x - obj->pos.x) + dir->z * (pos->z - obj->pos.z));
-	const float c = (pos->x - obj->pos.x) * (pos->x - obj->pos.x) + (pos->z - obj->pos.z) * (pos->z - obj->pos.z) - obj->radius * obj->radius;
+	const float b = 2.0f * (dir->x * (pos->x - obj->pos.x) + dir->z * (pos->z - obj->pos.z));
+	const float c = obj->d - 2.0f * (pos->x * obj->pos.x + pos->z * obj->pos.z);
 
-	float d = b * b - 4 * a * c;
+	float d = b * b - 4.0f * a * c;
 	if (d >= 0)
 	{
 		d = sqrt(d);
 
-		float t1 = (-b + d) / (2 * a);
-		float t2 = (-b - d) / (2 * a);
+		float t1 = (-b - d) / (2.0f * a);
+		float t2 = (-b + d) / (2.0f * a);
 
 		if (t1 <= 0 && t2 <= 0) {
 			return -1;
@@ -232,27 +232,40 @@ static inline float intersectSphere(Object* obj, Vec3* dir, float dirDot)
 
 static inline float intersectCylinder(Object* obj, Vec3* dir, float dirDot)
 {
-	if (dirDot == 0.0f) return -1;
-
 	const float a = dir->x * dir->x + dir->z * dir->z;
-	const float b = 2 * (dir->x * (-obj->pos.x) + dir->z * (-obj->pos.z));
+	const float b = 2.0f * (dir->x * (-obj->pos.x) + dir->z * (-obj->pos.z));
 	const float c = obj->d;
 
-	dirDot = 2.0f * a;
-
-	float d = b * b - 2.0f * dirDot * c;
-	d = -d;
+	float d = b * b - 4.0f * a * c;
 	if (d >= 0) {
 		d = (float)sqrt(d);
 
-		float t = (-b - d) / dirDot;
-		if (t <= 0) {
-			t = (-b + d) / dirDot;
+		float t1 = (-b - d) / (2.0f * a);
+		//if (t <= 0) {
+		float t2 = (-b + d) / (2.0f * a);
+		//}
+
+		if (t1 <= 0 && t2 <= 0) {
+			return -1;
 		}
 
-		float pY = -t * dir->y;
-		if (pY < 0.01f) return -1;
-		return t;
+		if (t1 < t2) {
+			if (t1 > 0) {
+				return t1;
+			} else {
+				return t2;
+			}
+		} else {
+			if (t2 > 0) {
+				return t2;
+			} else {
+				return t1;
+			}
+		}
+
+		//float pY = -t * dir->y;
+		//if (pY < 0.01f) return -1;
+		//return t;
 	}
 	return -1;
 }
@@ -360,7 +373,7 @@ static void setupObjects()
 	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.375f, 2, 1.0f);
 	setObjectSphere(&sphere[2], Vec3(1, -1, 4), 0.325f, 3, 0.0f);
 
-	setObjectCylinder(&cylinder[0], Vec3(0,0,8), 1.0f, 1, 0.0f);
+	setObjectCylinder(&cylinder[0], Vec3(0,0,4.0f), 1.0f, 1, 0.0f);
 
 	for (int i = 0; i < NUM_PLANES; ++i) {
 		calcABCD(&plane[i]);

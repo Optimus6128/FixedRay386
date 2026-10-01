@@ -1,0 +1,38 @@
+P = A + Bt
+
+x^2 + y^2 = r^2
+
+aX + bY + c = 0;
+
+
+
+(xt-xc)^2 + (yt-yc)^2 = r^2
+
+xt^2 + xc^2 -2xt*xc + yt^2 + yc^2 - 2yt*yc = r^2
+
+xt = x0 + t*vx
+yt = y0 + t*vy
+
+
+(x0 + t*vx)^2 + xc^2 -2*xc*(x0 + t*vx) + (y0 + t*vy)^2 + yc^2 - 2*yc*(y0 + t*vy) = r^2
+
+(x0 + t*vx)^2 + (y0 + t*vy)^2 + xc^2 -2*xc*(x0 + t*vx) + yc^2 - 2*yc*(y0 + t*vy) = r^2
+
+x0^2 + vx^2*t^2 + 2*vx*x0*t + y0^2 + vy^2*t^2 + 2*vy*y0*t
++ xc^2 + yc^2 - 2*xc*x0 - 2 * xc * vx *t - 2*yc*y0 - 2 * yc * vy * t = r^2
+
+
+(vx^2 + vy^2)*t^2 + 2 * (vx*x0 + vy*y0 - xc*vx -yc*vy) * t + 
+x0^2 + y0^2 + -2*xc*x0 - 2*yc*y0
+
+A = vx^2 + vy^2
+B = 2 * (vx * (x0 - xc) + vy * (y0 - yc))
+C = x0^2 + y0^2 - 2*(xc*x0 + yc*y0) - r^2
+
+
+
+Det = B^2 - 4 * A * C
+
+-B +/- sqrt(Det)
+----------------
+	  2*A
