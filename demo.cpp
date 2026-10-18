@@ -76,6 +76,8 @@ static void input()
 
 int main(int argc, char **argv)
 {
+	static bool raytraceFinished = false;
+
 	for (int i=1; i<argc; ++i) {
 		interpretArgument(argv[i]);
 	}
@@ -108,9 +110,12 @@ int main(int argc, char **argv)
 	{
 		input();
 
-		fxRayRun(&screen, getTime(), useFloat, subdiv);
+		if (!raytraceFinished) {
+			fxRayRun(&screen, getTime(), useFloat, subdiv);
+			raytraceFinished = true;
+		}
 
-		drawFps(&screen);
+		//drawFps(&screen);
 
 		updateFrame(vm, vsync);
 

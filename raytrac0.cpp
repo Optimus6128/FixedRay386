@@ -17,7 +17,7 @@ typedef struct Object
 	int type;
 	float reflectivity;
 	Vec3 pos, dir1, dir2;
-	float radius;
+	float radius, height;
 	float a, b, c, d;
 	int index;
 } Object;
@@ -44,8 +44,8 @@ static uint8 floorTex[CYBER_TEX_W * CYBER_TEX_H];
 static uint8 ceilingTex[CLOUD_TEX_W * CLOUD_TEX_H];
 
 #define NUM_PLANES 2
-#define NUM_SPHERES 3
-#define NUM_CYLINDERS 1
+#define NUM_SPHERES (64 + 1)
+#define NUM_CYLINDERS 64
 
 static Object plane[NUM_PLANES];
 static Object sphere[NUM_SPHERES];
@@ -53,6 +53,9 @@ static Object cylinder[NUM_CYLINDERS];
 static Vec3 lightDir;
 
 static PerPixelPrecs perPixelPrecs;
+
+const float floorHeight = 16.0f;
+const float ceilingHeight = 12.0f;
 
 static void setupViewDirPerPixelLUTs(Screen* buffer)
 {
@@ -134,10 +137,10 @@ static inline float intersectSphere2(Object *obj, Vec3 *pos, Vec3 *dir)
 {
 	const float a = dir->x * dir->x + dir->y * dir->y + dir->z * dir->z;
 	const float b = 2 * (dir->x * (pos->x - obj->pos.x) + dir->y * (pos->y - obj->pos.y) + dir->z * (pos->z - obj->pos.z));
-	const float c = (pos->x - obj->pos.x) * (pos->x - obj->pos.x) + (pos->y - obj->pos.y) * (pos->y - obj->pos.y) + (pos->z - obj->pos.z) * (pos->z - obj->pos.z) - 2.0f * (obj->pos.x * pos->x - obj->pos.z * pos->z) - obj->radius * obj->radius;
-
+	const float c = (pos->x - obj->pos.x) * (pos->x - obj->pos.x) + (pos->y - obj->pos.y) * (pos->y - obj->pos.y) + (pos->z - obj->pos.z) * (pos->z - obj->pos.z) - obj->radius * obj->radius;
 
 	float d = b * b - 4 * a * c;
+
 	if (d >= 0)
 	{
 		d = sqrt(d);
@@ -167,10 +170,10 @@ static inline float intersectSphere2(Object *obj, Vec3 *pos, Vec3 *dir)
 }
 
 static inline float intersectCylinder2(Object *obj, Vec3 *pos, Vec3 *dir)
-{
+{	
 	const float a = dir->x * dir->x + dir->z * dir->z;
-	const float b = 2.0f * (dir->x * (pos->x - obj->pos.x) + dir->z * (pos->z - obj->pos.z));
-	const float c = obj->d - 2.0f * (pos->x * obj->pos.x + pos->z * obj->pos.z);
+	const float b = 2 * (dir->x * (pos->x - obj->pos.x) + dir->z * (pos->z - obj->pos.z));
+	const float c = (pos->x - obj->pos.x) * (pos->x - obj->pos.x) + (pos->z - obj->pos.z) * (pos->z - obj->pos.z) - obj->radius * obj->radius;
 
 	float d = b * b - 4.0f * a * c;
 	if (d >= 0)
@@ -241,9 +244,7 @@ static inline float intersectCylinder(Object* obj, Vec3* dir, float dirDot)
 		d = (float)sqrt(d);
 
 		float t1 = (-b - d) / (2.0f * a);
-		//if (t <= 0) {
 		float t2 = (-b + d) / (2.0f * a);
-		//}
 
 		if (t1 <= 0 && t2 <= 0) {
 			return -1;
@@ -262,10 +263,6 @@ static inline float intersectCylinder(Object* obj, Vec3* dir, float dirDot)
 				return t1;
 			}
 		}
-
-		//float pY = -t * dir->y;
-		//if (pY < 0.01f) return -1;
-		//return t;
 	}
 	return -1;
 }
@@ -276,11 +273,6 @@ static void traceRayFromReflectPosition(Hit *hit)
 
 	Object *prevHitObj = hit->obj;
 
-	Vec3 reflectPos;
-	reflectPos.x = hit->pos.x;
-	reflectPos.y = hit->pos.y;
-	reflectPos.z = hit->pos.z;
-
 	//Vec3 *reflectDir = &hit->normal;
 	Vec3 *reflectDir = &hit->reflectNormal;
 
@@ -288,27 +280,27 @@ static void traceRayFromReflectPosition(Hit *hit)
 
 	for (int i=0; i<NUM_PLANES; ++i) {
 		if (prevHitObj != &plane[i]) {
-			t = intersectPlane2(&plane[i], &reflectPos, reflectDir);
-			if (t > 0.0f) { tMin = t; hit->obj = &plane[i]; }
+			t = intersectPlane2(&plane[i], &hit->pos, reflectDir);
+			if (t > 0.0f) { tMin = t; hit->obj = &plane[i];}
 		}
 	}
 
 	for (int i=0; i<NUM_SPHERES; ++i) {
 		if (prevHitObj != &sphere[i]) {
-			t = intersectSphere2(&sphere[i], &reflectPos, reflectDir); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[i]; }
+			t = intersectSphere2(&sphere[i], &hit->pos, reflectDir); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &sphere[i]; }
 		}
 	}
 
 	for (int i=0; i<NUM_CYLINDERS; ++i) {
 		if (prevHitObj != &cylinder[i]) {
-			t = intersectCylinder2(&cylinder[i], &reflectPos, reflectDir); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &cylinder[i]; }
+			t = intersectCylinder2(&cylinder[i], &hit->pos, reflectDir); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &cylinder[i]; }
 		}
 	}
 
 	if (tMin < FAR_F) {
-		hit->pos.x = reflectPos.x + tMin * reflectDir->x;
-		hit->pos.y = reflectPos.y + tMin * reflectDir->y;
-		hit->pos.z = reflectPos.z + tMin * reflectDir->z;
+		hit->pos.x = hit->pos.x + tMin * reflectDir->x;
+		hit->pos.y = hit->pos.y + tMin * reflectDir->y;
+		hit->pos.z = hit->pos.z + tMin * reflectDir->z;
 	}
 }
 
@@ -328,7 +320,13 @@ static void traceRayFromOriginView(Vec3 *dir, float dirDot, Hit *hit)
 	}
 
 	for (int i=0; i<NUM_CYLINDERS; ++i) {
-		t = intersectCylinder(&cylinder[i], dir, dirDot); if (t > 0.0f && t < tMin) { tMin = t; hit->obj = &cylinder[i]; }
+		t = intersectCylinder(&cylinder[i], dir, dirDot);
+		if (t > 0.0f && t < tMin) {
+			float pY = t * dir->y;
+			if (pY < cylinder[i].height) {
+				tMin = t; hit->obj = &cylinder[i];
+			}
+		}
 	}
 
 	if (tMin < FAR_F) {
@@ -356,10 +354,11 @@ static void setObjectSphere(Object* obj, Vec3 pos, float radius, int index, floa
 	obj->reflectivity = reflectivity;
 	obj->index = index;
 }
-static void setObjectCylinder(Object *obj, Vec3 pos, float radius, int index, float reflectivity)
+static void setObjectCylinder(Object *obj, Vec3 pos, float radius, float height, int index, float reflectivity)
 {
 	obj->pos = pos;
 	obj->radius = radius;
+	obj->height = height;
 	obj->type = OBJ_CYLINDER;
 	obj->reflectivity = reflectivity;
 	obj->index = index;
@@ -367,13 +366,29 @@ static void setObjectCylinder(Object *obj, Vec3 pos, float radius, int index, fl
 
 static void setupObjects()
 {
-	setObjectPlane(&plane[0], Vec3(0, -1, 0), Vec3(1, 0, 0), Vec3(0, 0, 1), 3, 0.0f);
-	setObjectPlane(&plane[1], Vec3(0, 1, 0), Vec3(1, 0, 0), Vec3(0, 0, 1), 2, 0.0f);
-	setObjectSphere(&sphere[0], Vec3(0, -1, 4), 0.25f, 1, 0.0f);
-	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.375f, 2, 1.0f);
-	setObjectSphere(&sphere[2], Vec3(1, -1, 4), 0.325f, 3, 0.0f);
+	setObjectPlane(&plane[0], Vec3(0, -floorHeight, 0), Vec3(1, 0, 0), Vec3(0, 0, 1), 3, 0.0f);
+	setObjectPlane(&plane[1], Vec3(0, ceilingHeight, 0), Vec3(1, 0, 0), Vec3(0, 0, 1), 2, 0.0f);
 
-	setObjectCylinder(&cylinder[0], Vec3(0,0,4.0f), 1.0f, 1, 0.0f);
+	int i = 0;
+	float spread = 16.0f;
+	float rad = floorHeight / 4.0f;
+	for (int y=0; y<8; ++y) {
+		for (int x=0; x<8; ++x) {
+			float height = -floorHeight + 12.0f + sin(x*x*y) * 12.0f;
+			float xp = ((float)x - 3.5f) * spread + sin(x*x*y) * (spread / 3.0f);
+			float yp = ((float)y - 3.5f - 0.25f * x) * spread + 6.0f*floorHeight + sin(x*y*x) * (spread / 4.0f);
+			int colIndex = (x^y) & 3;
+			setObjectCylinder(&cylinder[i], Vec3(xp,0,yp), rad, height, colIndex, 0.0f);
+			setObjectSphere(&sphere[i], Vec3(xp, height, yp), rad, colIndex, 0.0f);
+			++i;
+		}
+	}
+	setObjectSphere(&sphere[NUM_SPHERES-1], Vec3(12,16,48), 16.0f, 0, 1.0f);
+
+	/*setObjectSphere(&sphere[0], Vec3(0, -1, 4), 0.25f, 1, 1.0f);
+	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.375f, 2, 0.0f);
+	setObjectSphere(&sphere[2], Vec3(1, -1, 4), 0.325f, 3, 0.0f);
+	setObjectCylinder(&cylinder[0], Vec3(0,0,4.0f*floorHeight), floorHeight / 2.0f, 1, 0.0f);*/
 
 	for (int i = 0; i < NUM_PLANES; ++i) {
 		calcABCD(&plane[i]);
@@ -386,18 +401,18 @@ static void setupObjects()
 	}
 }
 
-static void updateObjects(int ticks)
+/*static void updateObjects(int ticks)
 {
-	for (int i = 0; i < 3; ++i) {
+	for (int i = 0; i < NUM_SPHERES; ++i) {
 		float t = (float)((i + 1) << 10) + (float)ticks * 0.5f;
 		float posX = (float)sin(t / 650.0f) * 0.5f;
 		float posY = (float)sin(t / 480.0f) * 0.375f;
-		float posZ = 1.75f + (float)sin(t / 880.0f) * 0.325f;
+		float posZ = 1.75f + (float)sin(t / 880.0f) * 0.725f;
 
 		sphere[i].pos = Vec3(posX, posY, posZ);
 		calcABCD(&sphere[i]);
 	}
-}
+}*/
 
 
 static void raytraceInitTextures()
@@ -455,16 +470,16 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 				normal->z = obj->c;
 
 				if (obj->pos.y > 0) {
-					scaleW = 1.0f;
-					scaleH = 1.0f;
+					scaleW = 1.0f / floorHeight;
+					scaleH = 1.0f / floorHeight;
 					zOff = (float)ticks * 0.0005f;
 					texture = floorTex;
 					planeTexW = CYBER_TEX_W;
 					planeTexH = CYBER_TEX_H;
 				} else {
 					normal->y = -normal->y;
-					scaleW = 0.125f;
-					scaleH = 0.25f;
+					scaleW = 0.125f / ceilingHeight;
+					scaleH = 0.25f / ceilingHeight;
 					zOff = 0.5f;
 					texture = ceilingTex;
 					planeTexW = CLOUD_TEX_W;
@@ -553,11 +568,12 @@ static void renderObjects(Screen* buffer, int ticks)
 				newViewDir.z = hit.normal.z;
 
 				traceRayFromReflectPosition(&hit);
-				reflectAdd = 4;
+				reflectAdd = 2;
 				//c = (c + computeColor(&newViewDir, &hit, ticks)) >> 1;
 				//c = (c + 3*computeColor(&newViewDir, &hit, ticks)) >> 2;
 				//c = (3*c + computeColor(&newViewDir, &hit, ticks)) >> 2;
-				c = (c * computeColor(&newViewDir, &hit, ticks)) >> 6;
+				c = (c * computeColor(&newViewDir, &hit, ticks)) >> 5;
+				c += reflectAdd;
 			}
 
 			if (hit.obj) {
@@ -577,7 +593,5 @@ static void renderObjects(Screen* buffer, int ticks)
 
 void raytraceRun0(Screen* buffer, int ticks)
 {
-	updateObjects(ticks);
-
-	renderObjects(buffer, ticks);
+	renderObjects(buffer, 100);
 }
