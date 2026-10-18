@@ -26,7 +26,7 @@ uint16 *my_clock = (uint16*)0x046C;
 
 static Screen screen;
 
-static bool useFloat = false;
+static bool useFloat = true;
 static int subdiv = 4;
 
 static void interpretArgument(char *arg)
@@ -72,6 +72,11 @@ static void input()
 			break;
 		}
 	}
+}
+
+void signalSomething()
+{
+	updateFrame(vm, vsync);
 }
 
 int main(int argc, char **argv)

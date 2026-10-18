@@ -374,7 +374,7 @@ static void setupObjects()
 	float rad = floorHeight / 4.0f;
 	for (int y=0; y<8; ++y) {
 		for (int x=0; x<8; ++x) {
-			float height = -floorHeight + 12.0f + sin(x*x*y) * 12.0f;
+			float height = -floorHeight + 12.0f + sin(x*x*y) * 10.0f;
 			float xp = ((float)x - 3.5f) * spread + sin(x*x*y) * (spread / 3.0f);
 			float yp = ((float)y - 3.5f - 0.25f * x) * spread + 6.0f*floorHeight + sin(x*y*x) * (spread / 4.0f);
 			int colIndex = (x^y) & 3;
@@ -384,11 +384,6 @@ static void setupObjects()
 		}
 	}
 	setObjectSphere(&sphere[NUM_SPHERES-1], Vec3(12,16,48), 16.0f, 0, 1.0f);
-
-	/*setObjectSphere(&sphere[0], Vec3(0, -1, 4), 0.25f, 1, 1.0f);
-	setObjectSphere(&sphere[1], Vec3(-1, -1, 4), 0.375f, 2, 0.0f);
-	setObjectSphere(&sphere[2], Vec3(1, -1, 4), 0.325f, 3, 0.0f);
-	setObjectCylinder(&cylinder[0], Vec3(0,0,4.0f*floorHeight), floorHeight / 2.0f, 1, 0.0f);*/
 
 	for (int i = 0; i < NUM_PLANES; ++i) {
 		calcABCD(&plane[i]);
@@ -470,8 +465,8 @@ static inline int computeColor(Vec3* dir, Hit* hit, int ticks)
 				normal->z = obj->c;
 
 				if (obj->pos.y > 0) {
-					scaleW = 1.0f / floorHeight;
-					scaleH = 1.0f / floorHeight;
+					scaleW = 2.0f / floorHeight;
+					scaleH = 2.0f / floorHeight;
 					zOff = (float)ticks * 0.0005f;
 					texture = floorTex;
 					planeTexW = CYBER_TEX_W;
@@ -588,6 +583,7 @@ static void renderObjects(Screen* buffer, int ticks)
 			viewDir++;
 			dirDot++;
 		}
+		signalSomething();
 	}
 }
 

@@ -19,5 +19,6 @@ extern uint8 *TXTptr;
 extern uint16 *my_clock;
 
 void requestQuit();
+void signalSomething();
 
 #endif
